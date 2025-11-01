@@ -397,6 +397,8 @@ async function handleProcess() {
     if (!filePath || currentPBFFiles.length === 0) {
         if (format === 'bookmark-gif') {
             showStatus('Please select PBF bookmark files first', 'error');
+        } else if (format === '7zip') {
+            showStatus('Please select a folder to compress first', 'error');
         } else {
             showStatus('Please select a video file first', 'error');
         }
@@ -430,6 +432,9 @@ async function handleProcess() {
             currentBookmarks.length;
 
         showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，请稍候...`, 'info');
+    } else if (format === '7zip') {
+        processBtn.textContent = 'Compressing with 7Zip...';
+        showStatus('正在压缩文件夹，请稍候...', 'info');
     } else {
         processBtn.textContent = 'Processing...';
         showStatus('Processing video, please wait...', 'info');

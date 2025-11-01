@@ -445,6 +445,19 @@ ipcMain.handle('select-file', async (event, format) => {
       { name: '视频文件', extensions: ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'webm', 'm4v', '3gp'] },
       { name: '所有文件', extensions: ['*'] }
     ];
+  } else if (format === '7zip') {
+    title = '选择要压缩的文件夹';
+    // For 7Zip, we want to select folders, so no file filters needed
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: title,
+      defaultPath: 'D:\\', // Default to D drive root as requested
+      properties: ['openDirectory'] // Select folder instead of file
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]; // Return the selected folder path
+    }
+    return null;
   } else {
     title = '选择视频文件';
     filters = [
@@ -455,7 +468,7 @@ ipcMain.handle('select-file', async (event, format) => {
 
   const result = await dialog.showOpenDialog(mainWindow, {
     title: title,
-    defaultPath: 'C:\\Users\\sunhao\\Desktop\\ToWatch',
+    defaultPath: format === 'video' || format === 'subtitle' ? 'C:\\Users\\sunhao\\Desktop\\ToWatch' : 'D:\\',
     filters: filters,
     properties: format === 'bookmark-gif' ? ['openMultiFile'] : ['openFile']
   });
@@ -794,6 +807,36 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
   // Enhanced memory logging
   const memoryUsage = process.memoryUsage();
   logWithTimestamp(`Process #${processCount} - Memory: RSS=${Math.round(memoryUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB, External=${Math.round(memoryUsage.external / 1024 / 1024)}MB`);
+
+  // Check if this is 7Zip compression
+  if (format === '7zip') {
+    logWithTimestamp('Starting 7Zip compression');
+
+    try {
+      const result = await compressWith7Zip(filePath, event);
+
+      if (result.success) {
+        processingCompleted = true;
+        logWithTimestamp('7Zip compression completed successfully');
+
+        // Force garbage collection if available
+        if (global.gc) {
+          global.gc();
+          logWithTimestamp('Forced garbage collection after 7Zip processing');
+        }
+
+        return {
+          success: true,
+          message: `Folder compressed successfully: ${result.outputPath}`
+        };
+      } else {
+        throw new Error(result.error || '7Zip compression failed');
+      }
+    } catch (error) {
+      logWithTimestamp(`7Zip compression failed: ${error.message}`, 'ERROR');
+      throw error;
+    }
+  }
 
   // Check if this is bookmark-based processing
   if (format === 'bookmark-gif') {
@@ -1663,5 +1706,122 @@ async function extractSubtitle(videoPath, streamIndex, language) {
         reject(new Error('字幕提取完成但输出文件未找到'));
       }
     });
+  });
+}
+
+// Compress folder using 7Zip with 100MB volumes
+async function compressWith7Zip(folderPath, event = null) {
+  const path = require('path');
+  const { spawn } = require('child_process');
+
+  return new Promise((resolve, reject) => {
+    try {
+      logWithTimestamp(`Starting 7Zip compression for folder: ${folderPath}`);
+
+      // Generate output archive name based on folder name
+      const folderName = path.basename(folderPath);
+      const outputArchive = path.join('D:\\', `${folderName}.7z`);
+
+      // 7Zip command with compression and volume settings
+      // -mx9: maximum compression
+      // -v100m: split into 100MB volumes
+      // -t7z: use 7z format
+      const args = [
+        'a',                    // add to archive
+        '-mx9',                 // maximum compression level
+        '-v100m',               // create 100MB volumes
+        '-t7z',                 // use 7z format
+        outputArchive,          // output archive path
+        folderPath + '\\*'      // folder contents (using * to avoid including the folder itself)
+      ];
+
+      logWithTimestamp(`Executing 7z command: 7z ${args.join(' ')}`);
+
+      const process = spawn('7z', args, {
+        cwd: 'D:\\',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      process.stdout.on('data', (data) => {
+        const text = data.toString();
+        output += text;
+        logWithTimestamp(`7Zip stdout: ${text.trim()}`);
+
+        // Send progress updates to renderer
+        if (event && text.includes('%')) {
+          try {
+            const progressMatch = text.match(/(\d+)%/);
+            if (progressMatch) {
+              const progress = parseInt(progressMatch[1]);
+              event.sender.send('processing-progress', {
+                current: progress,
+                total: 100,
+                message: `压缩进度: ${progress}%`
+              });
+            }
+          } catch (e) {
+            // Ignore progress parsing errors
+          }
+        }
+      });
+
+      process.stderr.on('data', (data) => {
+        const text = data.toString();
+        errorOutput += text;
+        logWithTimestamp(`7Zip stderr: ${text.trim()}`);
+      });
+
+      process.on('close', (code) => {
+        if (code === 0) {
+          logWithTimestamp(`7Zip compression completed successfully`);
+          logWithTimestamp(`Output archive: ${outputArchive}`);
+
+          // Check if volume files were created
+          const fs = require('fs');
+          const volumePattern = outputArchive.replace('.7z', '.7z.001');
+          const volumeExists = fs.existsSync(volumePattern) || fs.existsSync(outputArchive);
+
+          if (volumeExists) {
+            resolve({
+              success: true,
+              outputPath: outputArchive,
+              volumes: fs.existsSync(volumePattern) ? 'split into volumes' : 'single file',
+              message: `文件夹压缩成功: ${folderName}`
+            });
+          } else {
+            reject(new Error('7Zip completed but no output files found'));
+          }
+        } else {
+          logWithTimestamp(`7Zip failed with exit code: ${code}`, 'ERROR');
+          logWithTimestamp(`Error output: ${errorOutput}`, 'ERROR');
+          reject(new Error(`7Zip压缩失败，退出代码: ${code}\n${errorOutput}`));
+        }
+      });
+
+      process.on('error', (error) => {
+        logWithTimestamp(`7Zip process error: ${error.message}`, 'ERROR');
+        reject(new Error(`7Zip进程错误: ${error.message}\n请确保7z命令行工具已正确安装并添加到系统PATH环境变量中`));
+      });
+
+      // Set timeout for 7Zip process (30 minutes)
+      const timeout = setTimeout(() => {
+        if (!process.killed) {
+          process.kill();
+          reject(new Error('7Zip压缩超时，请检查文件夹大小或减少压缩级别'));
+        }
+      }, 30 * 60 * 1000); // 30 minutes
+
+      process.on('close', () => {
+        clearTimeout(timeout);
+      });
+
+    } catch (error) {
+      logWithTimestamp(`7Zip compression setup error: ${error.message}`, 'ERROR');
+      reject(new Error(`7Zip压缩设置错误: ${error.message}`));
+    }
   });
 }
