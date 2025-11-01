@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B68EE;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="videoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B6B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#EE5A6F;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Main background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#bgGradient)" />
+
+  <!-- Video player icon -->
+  <rect x="50" y="70" width="120" height="80" rx="8" fill="url(#videoGradient)" />
+
+  <!-- Play button -->
+  <path d="M 95 95 L 125 110 L 95 125 Z" fill="white" />
+
+  <!-- Film strip decoration -->
+  <rect x="50" y="50" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="75" y="50" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="100" y="50" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="125" y="50" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="150" y="50" width="15" height="8" rx="2" fill="#FFD93D" />
+
+  <rect x="50" y="162" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="75" y="162" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="100" y="162" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="125" y="162" width="15" height="8" rx="2" fill="#FFD93D" />
+  <rect x="150" y="162" width="15" height="8" rx="2" fill="#FFD93D" />
+
+  <!-- Beta badge -->
+  <g transform="translate(190, 190)">
+    <!-- Badge background -->
+    <circle cx="0" cy="0" r="28" fill="#FF6B6B" stroke="white" stroke-width="3" />
+    <!-- Beta text -->
+    <text x="0" y="8" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="white" text-anchor="middle">β</text>
+  </g>
+
+  <!-- Shadow effect -->
+  <circle cx="128" cy="128" r="120" fill="none" stroke="black" stroke-width="2" opacity="0.2" />
+</svg>

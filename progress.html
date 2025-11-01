@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Progress</title>
+    <link rel="stylesheet" href="progress.css">
+</head>
+<body>
+    <div class="progress-container">
+        <h2>Video Processing</h2>
+
+        <!-- Progress Bar -->
+        <div class="progress-section">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text">
+                <span id="progressPercent">0%</span>
+            </div>
+        </div>
+
+        <!-- Status Information -->
+        <div class="status-section">
+            <div class="status-text" id="statusText">Preparing to start processing...</div>
+        </div>
+
+        <!-- Processing Information -->
+        <div class="info-section">
+            <div class="info-item">
+                <span class="info-label">Current Status:</span>
+                <span class="info-value" id="currentStatus">Waiting</span>
+            </div>
+        </div>
+
+        <!-- Cancel Button -->
+        <div class="button-section">
+            <button id="cancelBtn" class="cancel-btn">Cancel Processing</button>
+        </div>
+    </div>
+
+    <script src="progress.js"></script>
+</body>
+</html>

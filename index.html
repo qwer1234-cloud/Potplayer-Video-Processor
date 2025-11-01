@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Processing Tool Beta</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Video Processing Tool Beta</h1>
+
+        <!-- File Selection Area -->
+        <div class="section">
+            <label class="section-label">Video File</label>
+            <div class="file-section">
+                <input type="text" id="filePath" class="file-input" placeholder="Please select a video file..." readonly>
+                <button id="browseBtn" class="browse-btn">Browse...</button>
+            </div>
+        </div>
+
+        <!-- Format Selection Area -->
+        <div class="section">
+            <label class="section-label">Output Format</label>
+            <select id="format" class="format-select">
+                <option value="gif">GIF</option>
+                <option value="video">Video</option>
+                <option value="bookmark-gif" selected>根据书签截取GIF(支持多文件)</option>
+                <option value="subtitle">提取字幕</option>
+            </select>
+        </div>
+
+        <!-- Subtitle Info Display (Hidden by default) -->
+        <div id="subtitleInfo" class="section" style="display: none;">
+            <label class="section-label">字幕信息</label>
+            <div id="subtitleList" class="subtitle-list">
+                <p>选择视频文件后将检测字幕信息...</p>
+            </div>
+        </div>
+
+        <!-- Bookmark Info Display (Hidden by default) -->
+        <div id="bookmarkInfo" class="section" style="display: none;">
+            <label class="section-label">书签信息</label>
+            <div id="bookmarkList" class="bookmark-list">
+                <p>选择PBF文件后将显示书签信息...</p>
+            </div>
+        </div>
+
+        <!-- Start Time Area -->
+        <div class="section">
+            <label class="section-label">Start Time</label>
+            <div class="time-inputs">
+                <div class="time-group">
+                    <div class="time-controls">
+                        <button class="time-btn" data-target="hours" data-action="decrement">-</button>
+                        <select id="hours" class="time-select">
+                            <!-- Hour options 0-23 -->
+                        </select>
+                        <button class="time-btn" data-target="hours" data-action="increment">+</button>
+                    </div>
+                    <span class="time-label">Hours</span>
+                </div>
+                <div class="time-group">
+                    <div class="time-controls">
+                        <button class="time-btn" data-target="minutes" data-action="decrement">-</button>
+                        <select id="minutes" class="time-select">
+                            <!-- Minute options 0-59 -->
+                        </select>
+                        <button class="time-btn" data-target="minutes" data-action="increment">+</button>
+                    </div>
+                    <span class="time-label">Minutes</span>
+                </div>
+                <div class="time-group">
+                    <div class="time-controls">
+                        <button class="time-btn" data-target="seconds" data-action="decrement">-</button>
+                        <select id="seconds" class="time-select">
+                            <!-- Second options 0-59 -->
+                        </select>
+                        <button class="time-btn" data-target="seconds" data-action="increment">+</button>
+                    </div>
+                    <span class="time-label">Seconds</span>
+                </div>
+                <div class="time-group">
+                    <div class="time-controls">
+                        <button class="time-btn" data-target="milliseconds" data-action="decrement">-</button>
+                        <input type="number" id="milliseconds" class="milliseconds-input" min="0" max="999" value="0">
+                        <button class="time-btn" data-target="milliseconds" data-action="increment">+</button>
+                    </div>
+                    <span class="time-label">Milliseconds</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Duration Area -->
+        <div class="section">
+            <label class="section-label">Duration</label>
+            <div class="duration-section">
+                <div class="duration-controls">
+                    <button class="time-btn" data-target="duration" data-action="decrement">-</button>
+                    <select id="duration" class="duration-select">
+                        <!-- 1-100 minutes options -->
+                    </select>
+                    <button class="time-btn" data-target="duration" data-action="increment">+</button>
+                </div>
+                <span class="duration-label">Minutes</span>
+            </div>
+        </div>
+
+        <!-- Process Button -->
+        <div class="section">
+            <button id="processBtn" class="process-btn" disabled>Start Processing</button>
+        </div>
+
+        <!-- Status Display -->
+        <div id="status" class="status"></div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

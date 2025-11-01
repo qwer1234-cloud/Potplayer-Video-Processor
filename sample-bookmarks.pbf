@@ -1,0 +1,11 @@
+# Sample PBF bookmark file for testing
+# Format: timestamp:HH:MM:SS.mmm name:BookmarkName
+
+timestamp:00:00:10.000 name:精彩片段开始
+timestamp:00:00:30.000 name:精彩片段结束
+timestamp:00:01:15.500 name:动作场面开始
+timestamp:00:01:45.200 name:动作场面结束
+timestamp:00:02:30.000 name:高潮部分开始
+timestamp:00:03:00.000 name:高潮部分结束
+timestamp:00:04:10.000 name:结尾片段开始
+timestamp:00:04:25.500 name:结尾片段结束

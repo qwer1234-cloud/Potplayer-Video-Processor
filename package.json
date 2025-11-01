@@ -1,0 +1,51 @@
+{
+  "name": "video-processor-beta",
+  "version": "5.6.0",
+  "description": "视频片段提取和GIF制作工具 (Beta版本)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "package": "electron-packager . \"Video Processing Tool Beta\" --platform=win32 --arch=x64 --out=dist --overwrite",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "video",
+    "gif",
+    "extract",
+    "electron"
+  ],
+  "author": "Video Processor",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.videoprocessor.beta.app",
+    "productName": "Video Processing Tool Beta",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules",
+      "!dist",
+      "!*.ps1",
+      "!*.bat",
+      "!*.md",
+      "!icon.ico"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}
