@@ -237,13 +237,65 @@ class RobustBookmarkProcessor {
                     console.log(`\n=== Cleaning Up Original Directory ===`);
                     this.deleteDirectoryRecursive(this.customOutputDir);
 
-                    if (event) {
+                    // Move volume files to D:\picture subdirectories
+                    let fileMoveResult = null;
+                    if (compressionResult.success && compressionResult.outputPath) {
+                        console.log(`\n=== Moving Volume Files ===`);
+
+                        if (event) {
+                            event.sender.send('processing-progress', {
+                                current: 0,
+                                total: 100,
+                                message: '正在移动分卷文件到picture目录...'
+                            });
+                        }
+
+                        try {
+                            fileMoveResult = await this.moveVolumeFilesToPictureSubdirs(compressionResult.outputPath, event);
+                            console.log(`File organization completed: ${fileMoveResult.message}`);
+
+                            if (event) {
+                                event.sender.send('processing-progress', {
+                                    current: 100,
+                                    total: 100,
+                                    message: `完成！文件已移动到picture目录对应子文件夹`
+                                });
+                            }
+                        } catch (moveError) {
+                            console.error(`File organization failed: ${moveError.message}`);
+
+                            if (event) {
+                                event.sender.send('processing-progress', {
+                                    current: 100,
+                                    total: 100,
+                                    message: `压缩完成但文件移动失败: ${moveError.message}`
+                                });
+                            }
+
+                            fileMoveResult = {
+                                success: false,
+                                error: moveError.message,
+                                message: `压缩完成但文件移动失败: ${moveError.message}`
+                            };
+                        }
+                    }
+
+                    if (event && !fileMoveResult) {
                         event.sender.send('processing-progress', {
                             current: 100,
                             total: 100,
                             message: '压缩完成，原文件夹已删除！'
                         });
                     }
+
+                    // Combine results
+                    if (fileMoveResult) {
+                        compressionResult.fileMove = fileMoveResult;
+                        if (fileMoveResult.success) {
+                            compressionResult.message += `，${fileMoveResult.message}`;
+                        }
+                    }
+
                 } catch (compressionError) {
                     console.error(`Auto compression failed: ${compressionError.message}`);
 
@@ -526,6 +578,148 @@ class RobustBookmarkProcessor {
             fs.rmSync(dirPath, { recursive: true, force: true });
             console.log(`Directory deleted successfully: ${dirPath}`);
         }
+    }
+
+    // Move volume files to D:\picture subdirectories based on volume number
+    async moveVolumeFilesToPictureSubdirs(archivePath, event = null) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                console.log(`Starting volume files organization for: ${archivePath}`);
+
+                // Ensure D:\picture directory exists
+                const pictureDir = 'D:\\picture';
+                if (!fs.existsSync(pictureDir)) {
+                    console.log('Creating D:\\picture directory...');
+                    fs.mkdirSync(pictureDir, { recursive: true });
+                }
+
+                // Find all volume files (both single file and split volumes)
+                const baseName = path.basename(archivePath, '.7z');
+                const archiveDir = path.dirname(archivePath);
+                const volumePattern = path.join(archiveDir, `${baseName}.7z.*`);
+                const mainArchiveFile = path.join(archiveDir, `${baseName}.7z`);
+
+                let volumeFiles = [];
+
+                // Check if split volumes exist
+                if (fs.existsSync(mainArchiveFile.replace('.7z', '.7z.001'))) {
+                    // Find all volume files (.001, .002, etc.)
+                    for (let i = 1; i <= 100; i++) { // Reasonable limit
+                        const volumeFile = path.join(archiveDir, `${baseName}.7z.${i.toString().padStart(3, '0')}`);
+                        if (fs.existsSync(volumeFile)) {
+                            volumeFiles.push(volumeFile);
+                        } else {
+                            break; // Stop when no more volume files found
+                        }
+                    }
+                } else if (fs.existsSync(mainArchiveFile)) {
+                    // Single file archive
+                    volumeFiles.push(mainArchiveFile);
+                }
+
+                if (volumeFiles.length === 0) {
+                    reject(new Error('No archive files found to move'));
+                    return;
+                }
+
+                console.log(`Found ${volumeFiles.length} volume files to organize`);
+
+                let movedFiles = [];
+                let errors = [];
+
+                // Process each volume file
+                for (let i = 0; i < volumeFiles.length; i++) {
+                    const volumeFile = volumeFiles[i];
+
+                    try {
+                        // Extract volume number from filename
+                        let volumeNumber = null;
+                        const volumeMatch = volumeFile.match(/\.7z\.(\d+)$/);
+
+                        if (volumeMatch) {
+                            // Split volume: extract number (001, 002, etc.)
+                            volumeNumber = volumeMatch[1];
+                        } else {
+                            // Single file: use 001 as default
+                            volumeNumber = '001';
+                        }
+
+                        // Create target subdirectory if it doesn't exist
+                        const targetSubdir = path.join(pictureDir, volumeNumber);
+                        if (!fs.existsSync(targetSubdir)) {
+                            console.log(`Creating subdirectory: ${targetSubdir}`);
+                            fs.mkdirSync(targetSubdir, { recursive: true });
+                        }
+
+                        // Move the file to the subdirectory
+                        const fileName = path.basename(volumeFile);
+                        const targetPath = path.join(targetSubdir, fileName);
+
+                        console.log(`Moving ${fileName} to ${targetSubdir}`);
+
+                        // Use synchronous move to ensure completion
+                        fs.renameSync(volumeFile, targetPath);
+
+                        movedFiles.push({
+                            originalPath: volumeFile,
+                            targetPath: targetPath,
+                            volumeNumber: volumeNumber,
+                            size: fs.statSync(targetPath).size
+                        });
+
+                        // Send progress update
+                        if (event) {
+                            const progress = Math.round(((i + 1) / volumeFiles.length) * 100);
+                            event.sender.send('processing-progress', {
+                                current: progress,
+                                total: 100,
+                                message: `移动分卷文件: ${volumeNumber} (${i + 1}/${volumeFiles.length})`
+                            });
+                        }
+
+                        console.log(`Successfully moved ${fileName} to subdirectory ${volumeNumber}`);
+
+                    } catch (moveError) {
+                        const errorMsg = `Failed to move ${path.basename(volumeFile)}: ${moveError.message}`;
+                        console.error(errorMsg);
+                        errors.push(errorMsg);
+                    }
+                }
+
+                console.log(`\n=== Volume Files Organization Complete ===`);
+                console.log(`Successfully moved: ${movedFiles.length} files`);
+                console.log(`Errors: ${errors.length} files`);
+
+                if (movedFiles.length > 0) {
+                    console.log('\nMoved files details:');
+                    movedFiles.forEach(movedFile => {
+                        console.log(`  📁 ${movedFile.volumeNumber}/: ${path.basename(movedFile.targetPath)} (${Math.round(movedFile.size / 1024 / 1024)}MB)`);
+                    });
+                }
+
+                if (errors.length > 0) {
+                    console.log('\nErrors encountered:');
+                    errors.forEach(error => console.log(`  ❌ ${error}`));
+                }
+
+                if (movedFiles.length === 0) {
+                    reject(new Error('No files were successfully moved'));
+                } else {
+                    resolve({
+                        success: true,
+                        movedFiles: movedFiles,
+                        errors: errors,
+                        totalProcessed: volumeFiles.length,
+                        totalMoved: movedFiles.length,
+                        message: `成功移动 ${movedFiles.length} 个分卷文件到 picture 目录的对应子文件夹`
+                    });
+                }
+
+            } catch (error) {
+                console.error(`Volume files organization failed: ${error.message}`);
+                reject(new Error(`分卷文件整理失败: ${error.message}`));
+            }
+        });
     }
 }
 

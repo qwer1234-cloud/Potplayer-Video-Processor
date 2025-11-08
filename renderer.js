@@ -431,7 +431,7 @@ async function handleProcess() {
             allPBFBookmarks.reduce((sum, pbf) => sum + pbf.bookmarks.length, 0) :
             currentBookmarks.length;
 
-        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，完成后将自动压缩并删除原文件夹...`, 'info');
+        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，完成后将自动压缩、移动到picture目录并删除原文件夹...`, 'info');
     } else if (format === '7zip') {
         processBtn.textContent = 'Compressing with 7Zip...';
         showStatus('正在压缩文件夹，请稍候...', 'info');
@@ -903,7 +903,7 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-// Show detailed results for bookmark processing with compression info
+// Show detailed results for bookmark processing with compression and file move info
 function showDetailedResults(results, compression = null) {
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.length - successCount;
@@ -916,6 +916,23 @@ function showDetailedResults(results, compression = null) {
     if (compression) {
         if (compression.success) {
             message += `\n✅ 压缩完成: ${compression.message}`;
+
+            // Display file move results
+            if (compression.fileMove) {
+                if (compression.fileMove.success) {
+                    message += `\n📁 文件整理: ${compression.fileMove.message}`;
+
+                    // Add details about moved files
+                    if (compression.fileMove.movedFiles && compression.fileMove.movedFiles.length > 0) {
+                        const fileDetails = compression.fileMove.movedFiles.map(file =>
+                            `${file.volumeNumber}(${Math.round(file.size / 1024 / 1024)}MB)`
+                        ).join(' ');
+                        message += `\n📊 移动详情: ${fileDetails}`;
+                    }
+                } else {
+                    message += `\n⚠️ 文件整理失败: ${compression.fileMove.message}`;
+                }
+            }
         } else {
             message += `\n⚠️ 压缩失败: ${compression.message}`;
         }
@@ -932,4 +949,17 @@ function showDetailedResults(results, compression = null) {
             console.log(`❌ ${result.fileName || '未知文件'} - 片段 ${result.pairIndex}: ${result.error}`);
         }
     });
+
+    // Log compression and file move details
+    if (compression && compression.success && compression.fileMove) {
+        console.log('\n=== 分卷文件移动详情 ===');
+        compression.fileMove.movedFiles.forEach(file => {
+            console.log(`📁 ${file.volumeNumber}/: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+        });
+
+        if (compression.fileMove.errors && compression.fileMove.errors.length > 0) {
+            console.log('\n❌ 移动错误:');
+            compression.fileMove.errors.forEach(error => console.log(`   ${error}`));
+        }
+    }
 }
