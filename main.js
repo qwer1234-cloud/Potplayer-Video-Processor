@@ -445,12 +445,12 @@ ipcMain.handle('select-file', async (event, format) => {
       { name: '视频文件', extensions: ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'webm', 'm4v', '3gp'] },
       { name: '所有文件', extensions: ['*'] }
     ];
-  } else if (format === '7zip') {
-    title = '选择要压缩的文件夹';
-    // For 7Zip, we want to select folders, so no file filters needed
+  } else if (format === '7zip' || format === 'add-prefix' || format === 'remove-prefix') {
+    title = format === '7zip' ? '选择要压缩的文件夹' : '选择要重命名文件的文件夹';
+    // For 7Zip and prefix operations, we want to select folders
     const result = await dialog.showOpenDialog(mainWindow, {
       title: title,
-      defaultPath: 'D:\\', // Default to D drive root as requested
+      defaultPath: 'E:\\', // Default to E drive as requested
       properties: ['openDirectory'] // Select folder instead of file
     });
 
@@ -800,7 +800,7 @@ function executeScript(scriptPath, args, format) {
 
 
 // Handle video processing request with enhanced memory management
-ipcMain.handle('process-video', async (event, { filePath, format, startTime, duration, bookmarks, pbfFiles, allBookmarks }) => {
+ipcMain.handle('process-video', async (event, { filePath, format, startTime, duration, bookmarks, pbfFiles, allBookmarks, prefix }) => {
   processingCompleted = false;
   processCount++;
 
@@ -834,6 +834,38 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
       }
     } catch (error) {
       logWithTimestamp(`7Zip compression failed: ${error.message}`, 'ERROR');
+      throw error;
+    }
+  }
+
+  // Check if this is prefix operations
+  if (format === 'add-prefix' || format === 'remove-prefix') {
+    logWithTimestamp(`Starting ${format === 'add-prefix' ? 'add' : 'remove'} prefix operation`);
+
+    try {
+      // Get prefix from parameters
+      const prefixToUse = prefix || '';
+      if (!prefixToUse) {
+        throw new Error('前缀不能为空');
+      }
+
+      const result = await processFilePrefixes(filePath, format === 'add-prefix' ? 'add' : 'remove', prefixToUse, event);
+
+      if (result.success) {
+        processingCompleted = true;
+        logWithTimestamp(`${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation completed successfully`);
+
+        return {
+          success: true,
+          message: result.message,
+          processedFiles: result.processedFiles,
+          skippedFiles: result.skippedFiles
+        };
+      } else {
+        throw new Error(result.error || `${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation failed`);
+      }
+    } catch (error) {
+      logWithTimestamp(`${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation failed: ${error.message}`, 'ERROR');
       throw error;
     }
   }
@@ -1825,3 +1857,188 @@ async function compressWith7Zip(folderPath, event = null) {
     }
   });
 }
+
+// Process file prefixes (add or remove)
+async function processFilePrefixes(folderPath, operation, prefix, event = null) {
+  const path = require('path');
+  const fs = require('fs');
+
+  return new Promise((resolve, reject) => {
+    try {
+      logWithTimestamp(`Starting ${operation} prefix operation for folder: ${folderPath}`);
+      logWithTimestamp(`Prefix to ${operation}: "${prefix}"`);
+
+      if (!fs.existsSync(folderPath)) {
+        throw new Error(`文件夹不存在: ${folderPath}`);
+      }
+
+      // Read all files in the directory (exclude directories)
+      const files = fs.readdirSync(folderPath);
+      const fileItems = files.filter(file => {
+        const filePath = path.join(folderPath, file);
+        return fs.statSync(filePath).isFile(); // Only process files, not directories
+      });
+
+      logWithTimestamp(`Found ${fileItems.length} files to process`);
+
+      if (fileItems.length === 0) {
+        resolve({
+          success: true,
+          message: '文件夹中没有找到文件',
+          processedFiles: [],
+          skippedFiles: []
+        });
+        return;
+      }
+
+      let processedFiles = [];
+      let skippedFiles = [];
+
+      fileItems.forEach((file, index) => {
+        const oldFilePath = path.join(folderPath, file);
+
+        try {
+          let newFileName;
+
+          if (operation === 'add') {
+            // Add prefix if not already present
+            if (!file.startsWith(prefix)) {
+              newFileName = prefix + file;
+            } else {
+              // File already has the prefix
+              skippedFiles.push({
+                fileName: file,
+                reason: '文件已有此前缀'
+              });
+              return;
+            }
+          } else {
+            // Remove prefix if present
+            if (file.startsWith(prefix)) {
+              newFileName = file.substring(prefix.length);
+            } else {
+              // File doesn't have the prefix
+              skippedFiles.push({
+                fileName: file,
+                reason: '文件没有此前缀'
+              });
+              return;
+            }
+          }
+
+          // Ensure new filename is not empty
+          if (!newFileName || newFileName.trim() === '') {
+            skippedFiles.push({
+              fileName: file,
+              reason: '新文件名为空'
+            });
+            return;
+          }
+
+          const newFilePath = path.join(folderPath, newFileName);
+
+          // Check if target file already exists
+          if (fs.existsSync(newFilePath) && newFilePath !== oldFilePath) {
+            skippedFiles.push({
+              fileName: file,
+              reason: '目标文件已存在'
+            });
+            return;
+          }
+
+          // Rename the file
+          if (newFilePath !== oldFilePath) {
+            fs.renameSync(oldFilePath, newFilePath);
+            processedFiles.push({
+              oldName: file,
+              newName: newFileName,
+              operation: operation
+            });
+            logWithTimestamp(`Renamed: ${file} -> ${newFileName}`);
+          } else {
+            skippedFiles.push({
+              fileName: file,
+              reason: '文件名无需更改'
+            });
+          }
+
+        } catch (error) {
+          logWithTimestamp(`Error processing file ${file}: ${error.message}`, 'ERROR');
+          skippedFiles.push({
+            fileName: file,
+            reason: `处理失败: ${error.message}`
+          });
+        }
+
+        // Send progress update
+        if (event && index % 10 === 0) { // Update progress every 10 files
+          const progress = Math.round(((index + 1) / fileItems.length) * 100);
+          event.sender.send('processing-progress', {
+            current: progress,
+            total: 100,
+            message: `处理文件: ${index + 1}/${fileItems.length} - ${file}`
+          });
+        }
+      });
+
+      logWithTimestamp(`${operation} prefix operation completed`);
+      logWithTimestamp(`Processed: ${processedFiles.length} files`);
+      logWithTimestamp(`Skipped: ${skippedFiles.length} files`);
+
+      resolve({
+        success: true,
+        message: `成功${operation === 'add' ? '添加' : '删除'}前缀 ${processedFiles.length} 个文件，跳过 ${skippedFiles.length} 个文件`,
+        processedFiles: processedFiles,
+        skippedFiles: skippedFiles
+      });
+
+    } catch (error) {
+      logWithTimestamp(`Prefix operation failed: ${error.message}`, 'ERROR');
+      reject(new Error(`前缀操作失败: ${error.message}`));
+    }
+  });
+}
+
+// Handle video processing request with prefix parameter
+ipcMain.handle('process-video-with-prefix', async (event, { filePath, format, startTime, duration, bookmarks, pbfFiles, allBookmarks }, prefix) => {
+  processingCompleted = false;
+  processCount++;
+
+  // Enhanced memory logging
+  const memoryUsage = process.memoryUsage();
+  logWithTimestamp(`Process #${processCount} - Memory: RSS=${Math.round(memoryUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB, External=${Math.round(memoryUsage.external / 1024 / 1024)}MB`);
+
+  // Check if this is prefix operations
+  if (format === 'add-prefix' || format === 'remove-prefix') {
+    logWithTimestamp(`Starting ${format === 'add-prefix' ? 'add' : 'remove'} prefix operation`);
+
+    try {
+      const prefixToUse = prefix || '';
+      if (!prefixToUse) {
+        throw new Error('前缀不能为空');
+      }
+
+      const result = await processFilePrefixes(filePath, format === 'add-prefix' ? 'add' : 'remove', prefixToUse, event);
+
+      if (result.success) {
+        processingCompleted = true;
+        logWithTimestamp(`${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation completed successfully`);
+
+        return {
+          success: true,
+          message: result.message,
+          processedFiles: result.processedFiles,
+          skippedFiles: result.skippedFiles
+        };
+      } else {
+        throw new Error(result.error || `${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation failed`);
+      }
+    } catch (error) {
+      logWithTimestamp(`${format === 'add-prefix' ? 'Add' : 'Remove'} prefix operation failed: ${error.message}`, 'ERROR');
+      throw error;
+    }
+  }
+
+  // For other formats, fall back to normal processing
+  return await ipcMain.handle('process-video', event, { filePath, format, startTime, duration, bookmarks, pbfFiles, allBookmarks, prefix });
+});

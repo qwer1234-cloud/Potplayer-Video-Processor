@@ -12,22 +12,24 @@
 
         <!-- File Selection Area -->
         <div class="section">
-            <label class="section-label">Video File</label>
+            <label class="section-label">File List/Folder</label>
             <div class="file-section">
-                <input type="text" id="filePath" class="file-input" placeholder="Please select a video file..." readonly>
+                <input type="text" id="filePath" class="file-input" placeholder="Please select a file or folder..." readonly>
                 <button id="browseBtn" class="browse-btn">Browse...</button>
             </div>
         </div>
 
-        <!-- Format Selection Area -->
+        <!-- Function List Selection Area -->
         <div class="section">
-            <label class="section-label">Output Format</label>
+            <label class="section-label">Function List</label>
             <select id="format" class="format-select">
                 <option value="gif">GIF</option>
                 <option value="video">Video</option>
                 <option value="bookmark-gif" selected>根据书签截取GIF(支持多文件)</option>
                 <option value="subtitle">提取字幕</option>
                 <option value="7zip">7Zip压缩文件夹</option>
+                <option value="add-prefix">批量添加前缀</option>
+                <option value="remove-prefix">批量删除前缀</option>
             </select>
         </div>
 

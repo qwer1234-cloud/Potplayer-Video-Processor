@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (format) => ipcRenderer.invoke('select-file', format),
   processVideo: (data) => ipcRenderer.invoke('process-video', data),
+  processVideoWithPrefix: (data, prefix) => ipcRenderer.invoke('process-video-with-prefix', data, prefix),
   parsePBFBookmarks: (pbfFilePath) => ipcRenderer.invoke('parse-pbf-bookmarks', pbfFilePath),
   onProgressUpdate: (callback) => ipcRenderer.on('progress-update', callback),
   onProcessingProgress: (callback) => ipcRenderer.on('processing-progress', callback),

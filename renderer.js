@@ -394,11 +394,11 @@ async function handleProcess() {
     const duration = getDuration();
 
     // Validate input
-    if (!filePath || currentPBFFiles.length === 0) {
+    if (!filePath || (format === 'bookmark-gif' && currentPBFFiles.length === 0)) {
         if (format === 'bookmark-gif') {
             showStatus('Please select PBF bookmark files first', 'error');
-        } else if (format === '7zip') {
-            showStatus('Please select a folder to compress first', 'error');
+        } else if (format === '7zip' || format === 'add-prefix' || format === 'remove-prefix') {
+            showStatus('Please select a folder first', 'error');
         } else {
             showStatus('Please select a video file first', 'error');
         }
@@ -435,6 +435,9 @@ async function handleProcess() {
     } else if (format === '7zip') {
         processBtn.textContent = 'Compressing with 7Zip...';
         showStatus('正在压缩文件夹，请稍候...', 'info');
+    } else if (format === 'add-prefix' || format === 'remove-prefix') {
+        processBtn.textContent = format === 'add-prefix' ? 'Adding prefix...' : 'Removing prefix...';
+        showStatus('正在处理文件前缀，请稍候...', 'info');
     } else {
         processBtn.textContent = 'Processing...';
         showStatus('Processing video, please wait...', 'info');
@@ -460,12 +463,27 @@ async function handleProcess() {
             }
         }
 
-        const result = await window.electronAPI.processVideo(processData);
+        let result;
+
+        // Handle prefix operations with input dialog
+        if (format === 'add-prefix' || format === 'remove-prefix') {
+            const prefix = await showPrefixInputDialog(format === 'add-prefix' ? '添加前缀' : '删除前缀');
+            if (prefix === null) {
+                // User cancelled the dialog
+                return;
+            }
+            result = await window.electronAPI.processVideoWithPrefix(processData, prefix);
+        } else {
+            result = await window.electronAPI.processVideo(processData);
+        }
 
         if (result.success) {
             if (format === 'bookmark-gif' && result.results) {
                 // Show detailed results for bookmark processing
                 showDetailedResults(result.results, result.compression);
+            } else if (format === 'add-prefix' || format === 'remove-prefix') {
+                // Show prefix operation results
+                showPrefixOperationResults(result);
             } else {
                 showStatus(result.message || 'Video processing completed!', 'success');
             }
@@ -961,5 +979,125 @@ function showDetailedResults(results, compression = null) {
             console.log('\n❌ 移动错误:');
             compression.fileMove.errors.forEach(error => console.log(`   ${error}`));
         }
+    }
+}
+
+// Show prefix input dialog
+function showPrefixInputDialog(operation) {
+    return new Promise((resolve) => {
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        `;
+
+        // Create dialog content
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            min-width: 300px;
+            max-width: 400px;
+        `;
+
+        dialog.innerHTML = `
+            <h3 style="margin: 0 0 15px 0; color: #333;">${operation}</h3>
+            <p style="margin: 0 0 15px 0; color: #666; font-size: 14px;">
+                请输入要${operation}的前缀：
+            </p>
+            <input type="text" id="prefixInput" placeholder="输入前缀..."
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; box-sizing: border-box;">
+            <div style="text-align: right;">
+                <button id="cancelBtn" style="margin-right: 10px; padding: 8px 16px; border: 1px solid #ddd; background: #f5f5f5; border-radius: 4px; cursor: pointer;">取消</button>
+                <button id="confirmBtn" style="padding: 8px 16px; border: 1px solid #007acc; background: #007acc; color: white; border-radius: 4px; cursor: pointer;">确定</button>
+            </div>
+        `;
+
+        modal.appendChild(dialog);
+        document.body.appendChild(modal);
+
+        // Focus on input
+        setTimeout(() => {
+            document.getElementById('prefixInput').focus();
+        }, 100);
+
+        // Handle events
+        const input = document.getElementById('prefixInput');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const confirmBtn = document.getElementById('confirmBtn');
+
+        const cleanup = () => {
+            document.body.removeChild(modal);
+        };
+
+        cancelBtn.addEventListener('click', () => {
+            cleanup();
+            resolve(null);
+        });
+
+        confirmBtn.addEventListener('click', () => {
+            const prefix = input.value.trim();
+            cleanup();
+            resolve(prefix);
+        });
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const prefix = input.value.trim();
+                cleanup();
+                resolve(prefix);
+            } else if (e.key === 'Escape') {
+                cleanup();
+                resolve(null);
+            }
+        });
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                cleanup();
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Show prefix operation results
+function showPrefixOperationResults(result) {
+    let message = result.message || '前缀操作完成';
+
+    if (result.processedFiles && result.processedFiles.length > 0) {
+        message += `\n成功处理 ${result.processedFiles.length} 个文件`;
+    }
+
+    if (result.skippedFiles && result.skippedFiles.length > 0) {
+        message += `\n跳过 ${result.skippedFiles.length} 个文件`;
+    }
+
+    showStatus(message, 'success');
+
+    // Log detailed results to console
+    console.log('=== 前缀操作结果 ===');
+    if (result.processedFiles) {
+        result.processedFiles.forEach(file => {
+            console.log(`✅ ${file.oldName} → ${file.newName}`);
+        });
+    }
+
+    if (result.skippedFiles) {
+        result.skippedFiles.forEach(file => {
+            console.log(`⏭️ ${file.fileName}: ${file.reason}`);
+        });
     }
 }
