@@ -431,7 +431,7 @@ async function handleProcess() {
             allPBFBookmarks.reduce((sum, pbf) => sum + pbf.bookmarks.length, 0) :
             currentBookmarks.length;
 
-        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，请稍候...`, 'info');
+        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，完成后将自动压缩并删除原文件夹...`, 'info');
     } else if (format === '7zip') {
         processBtn.textContent = 'Compressing with 7Zip...';
         showStatus('正在压缩文件夹，请稍候...', 'info');
@@ -465,7 +465,7 @@ async function handleProcess() {
         if (result.success) {
             if (format === 'bookmark-gif' && result.results) {
                 // Show detailed results for bookmark processing
-                showDetailedResults(result.results);
+                showDetailedResults(result.results, result.compression);
             } else {
                 showStatus(result.message || 'Video processing completed!', 'success');
             }
@@ -901,4 +901,35 @@ if (typeof module !== 'undefined' && module.exports) {
         detectSubtitles,
         extractSubtitle
     };
+}
+
+// Show detailed results for bookmark processing with compression info
+function showDetailedResults(results, compression = null) {
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.length - successCount;
+
+    let message = `处理完成: 成功 ${successCount} 个`;
+    if (failureCount > 0) {
+        message += `，失败 ${failureCount} 个`;
+    }
+
+    if (compression) {
+        if (compression.success) {
+            message += `\n✅ 压缩完成: ${compression.message}`;
+        } else {
+            message += `\n⚠️ 压缩失败: ${compression.message}`;
+        }
+    }
+
+    showStatus(message, compression?.success ? 'success' : 'info');
+
+    // Log detailed results to console for debugging
+    console.log('=== 书签处理详细结果 ===');
+    results.forEach(result => {
+        if (result.success) {
+            console.log(`✅ ${result.fileName || '未知文件'} - 片段 ${result.pairIndex}: ${result.outputPath}`);
+        } else {
+            console.log(`❌ ${result.fileName || '未知文件'} - 片段 ${result.pairIndex}: ${result.error}`);
+        }
+    });
 }

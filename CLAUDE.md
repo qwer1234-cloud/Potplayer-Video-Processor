@@ -21,6 +21,7 @@ npm run package             # Package using electron-packager
 node test_robust_processor.js     # Test robust bookmark processor
 node test_debug_pbf.js           # Test PBF file processing
 node scripts/test_direct_ffmpeg.js # Test direct FFmpeg processing
+update_build.bat                 # Update built executable with latest changes
 ```
 
 ## Application Architecture
@@ -37,20 +38,28 @@ The application uses multiple bookmark processors in the `scripts/` directory:
 - `integrated_bookmark_processor.js` - Alternative processing approach
 - `ultimate_working_processor.js` - Fallback processor
 
+### 7Zip Compression System (v5.7.0)
+- **Implementation**: `compressWith7Zip()` function in main.js:1713
+- **Settings**: Maximum compression (-mx9), 100MB volumes (-v100m), 7z format (-t7z)
+- **Progress tracking**: Real-time progress updates via IPC during compression
+- **Error handling**: 30-minute timeout, comprehensive logging, graceful failure handling
+
 ### Key Features
 1. **Bookmark-based extraction**: Reads PotPlayer bookmark files (.pbf) to extract multiple clips
 2. **Time-based extraction**: Manual time selection for clip extraction
 3. **GIF generation**: Creates optimized GIFs with configurable quality and compression
 4. **Subtitle extraction**: Extracts subtitles from video files
-5. **Multi-format support**: MP4, AVI, MOV, MKV, WMV, FLV, WebM
+5. **7Zip compression**: Compresses folders with 100MB volume splitting and maximum compression (v5.7.0)
+6. **Multi-format support**: MP4, AVI, MOV, MKV, WMV, FLV, WebM
 
 ### Dependencies
-- **External tools**: FFmpeg (required), gifski (optional, for GIF generation)
+- **External tools**: FFmpeg (required), gifski (optional, for GIF generation), 7Zip command-line tool (required for compression feature)
 - **Node modules**: Electron, electron-builder, electron-packager
 
 ### Output Directories
 - GIF files: `D://picture12/` (or custom directory based on PBF filename)
 - Video clips: `D://video_clips/`
+- 7Zip archives: `D://{folder_name}.7z` (with volume splitting: .7z.001, .7z.002, etc.)
 - Custom directories: Created based on PBF filename when processing bookmarks
 
 ### IPC Communication
@@ -78,9 +87,15 @@ The application uses increased memory limits and garbage collection:
 - Uses Windows paths (`D://`) for output directories
 - Batch file execution for FFmpeg commands
 - Windows-specific file handling and path resolution
+- 7Zip command-line integration for compression (requires 7z.exe in PATH)
 
 ### Testing
 Multiple test files are available for different components:
 - `test_robust_processor.js` - Main bookmark processor tests
 - `test_debug_pbf.js` - PBF file parsing tests
 - `scripts/test_*.js` - Various component tests
+
+### Build Updates
+For quick updates to the built executable without full rebuild:
+- Use `update_build.bat` to copy latest changes to existing build in `dist/`
+- Copies main.js and key processor files to built application resources
