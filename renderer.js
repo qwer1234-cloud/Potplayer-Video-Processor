@@ -431,7 +431,7 @@ async function handleProcess() {
             allPBFBookmarks.reduce((sum, pbf) => sum + pbf.bookmarks.length, 0) :
             currentBookmarks.length;
 
-        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，完成后将自动压缩、移动到picture目录并删除原文件夹...`, 'info');
+        showStatus(`正在从 ${Math.floor(totalBookmarks / 2)} 个书签对生成GIF，完成后将智能压缩（≥100MB时分卷，否则单一压缩包）并移动到picture目录...`, 'info');
     } else if (format === '7zip') {
         processBtn.textContent = 'Compressing with 7Zip...';
         showStatus('正在压缩文件夹，请稍候...', 'info');
@@ -933,7 +933,16 @@ function showDetailedResults(results, compression = null) {
 
     if (compression) {
         if (compression.success) {
-            message += `\n✅ 压缩完成: ${compression.message}`;
+            message += `\n✅ 智能压缩完成: ${compression.message}`;
+
+            // Display compression mode info
+            if (compression.compressionMode) {
+                const compressionType = compression.compressionMode === 'split into volumes' ? '分卷压缩' : '单一压缩包';
+                message += `\n🔧 压缩模式: ${compressionType}`;
+                if (compression.totalSizeMB) {
+                    message += ` (${compression.totalSizeMB}MB)`;
+                }
+            }
 
             // Display file move results
             if (compression.fileMove) {
@@ -942,9 +951,13 @@ function showDetailedResults(results, compression = null) {
 
                     // Add details about moved files
                     if (compression.fileMove.movedFiles && compression.fileMove.movedFiles.length > 0) {
-                        const fileDetails = compression.fileMove.movedFiles.map(file =>
-                            `${file.volumeNumber}(${Math.round(file.size / 1024 / 1024)}MB)`
-                        ).join(' ');
+                        const fileDetails = compression.fileMove.movedFiles.map(file => {
+                            if (file.type === 'volume') {
+                                return `${file.volumeNumber}(${Math.round(file.size / 1024 / 1024)}MB)`;
+                            } else {
+                                return `压缩包(${Math.round(file.size / 1024 / 1024)}MB)`;
+                            }
+                        }).join(' ');
                         message += `\n📊 移动详情: ${fileDetails}`;
                     }
                 } else {
@@ -970,9 +983,16 @@ function showDetailedResults(results, compression = null) {
 
     // Log compression and file move details
     if (compression && compression.success && compression.fileMove) {
-        console.log('\n=== 分卷文件移动详情 ===');
+        console.log('\n=== 压缩文件移动详情 ===');
+        console.log(`压缩模式: ${compression.compressionMode}`);
+        console.log(`总大小: ${compression.totalSizeMB || 'N/A'} MB`);
+
         compression.fileMove.movedFiles.forEach(file => {
-            console.log(`📁 ${file.volumeNumber}/: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+            if (file.type === 'volume') {
+                console.log(`📁 ${file.volumeNumber}/: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+            } else {
+                console.log(`📁 picture\\: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+            }
         });
 
         if (compression.fileMove.errors && compression.fileMove.errors.length > 0) {

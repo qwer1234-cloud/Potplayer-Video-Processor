@@ -215,6 +215,22 @@ class RobustBookmarkProcessor {
             console.log(`Successful: ${results.filter(r => r.success).length}`);
             console.log(`Failed: ${results.filter(r => !r.success).length}`);
 
+            // Calculate total GIF size for smart compression decision
+            let totalGifSize = 0;
+            results.forEach(result => {
+                if (result.success && result.outputPath) {
+                    try {
+                        const stats = fs.statSync(result.outputPath);
+                        totalGifSize += stats.size;
+                    } catch (error) {
+                        console.log(`Warning: Could not get size for ${result.outputPath}: ${error.message}`);
+                    }
+                }
+            });
+
+            const totalSizeMB = Math.round(totalGifSize / 1024 / 1024 * 100) / 100;
+            console.log(`Total GIF size: ${totalSizeMB} MB (${totalSizeMB < 100 ? 'No volume splitting needed' : 'Will create volumes'})`);
+
             // Auto-compress GIF directory if enabled and custom directory exists
             let compressionResult = null;
             if (this.enableAutoCompression && this.customOutputDir && this.customOutputDir !== this.outputDir) {
@@ -230,35 +246,37 @@ class RobustBookmarkProcessor {
                 }
 
                 try {
-                    compressionResult = await this.compressGifDirectory(this.customOutputDir, event);
+                    compressionResult = await this.compressGifDirectory(this.customOutputDir, totalSizeMB, event);
                     console.log(`Auto compression completed: ${compressionResult.message}`);
 
                     // Delete original GIF directory after successful compression
                     console.log(`\n=== Cleaning Up Original Directory ===`);
                     this.deleteDirectoryRecursive(this.customOutputDir);
 
-                    // Move volume files to D:\picture subdirectories
+                    // Move archive files to D:\picture directory
                     let fileMoveResult = null;
                     if (compressionResult.success && compressionResult.outputPath) {
-                        console.log(`\n=== Moving Volume Files ===`);
+                        console.log(`\n=== Moving Archive Files ===`);
 
                         if (event) {
                             event.sender.send('processing-progress', {
                                 current: 0,
                                 total: 100,
-                                message: '正在移动分卷文件到picture目录...'
+                                message: '正在移动压缩包文件到picture目录...'
                             });
                         }
 
                         try {
-                            fileMoveResult = await this.moveVolumeFilesToPictureSubdirs(compressionResult.outputPath, event);
+                            const compressionMode = compressionResult.compressionMode || 'single file';
+                            fileMoveResult = await this.moveArchiveFilesToPicture(compressionResult.outputPath, compressionMode, event);
                             console.log(`File organization completed: ${fileMoveResult.message}`);
 
                             if (event) {
+                                const moveType = compressionMode === 'split into volumes' ? '分卷文件' : '压缩包';
                                 event.sender.send('processing-progress', {
                                     current: 100,
                                     total: 100,
-                                    message: `完成！文件已移动到picture目录对应子文件夹`
+                                    message: `完成！${moveType}已移动到picture目录${compressionMode === 'split into volumes' ? '对应子文件夹' : ''}`
                                 });
                             }
                         } catch (moveError) {
@@ -458,28 +476,57 @@ class RobustBookmarkProcessor {
         }
     }
 
-    // Compress GIF directory using 7Zip with same settings as main function
-    async compressGifDirectory(gifDirPath, event = null) {
+    // Compress GIF directory using 7Zip with smart volume splitting
+    async compressGifDirectory(gifDirPath, totalSizeMB = 0, event = null) {
         return new Promise((resolve, reject) => {
             try {
                 console.log(`Starting 7Zip compression for GIF directory: ${gifDirPath}`);
+                console.log(`Total GIF size: ${totalSizeMB} MB`);
 
                 // Generate output archive name based on directory name
                 const dirName = path.basename(gifDirPath);
                 const outputArchive = path.join('D:\\', `${dirName}.7z`);
 
-                // 7Zip command with same compression and volume settings as main function
-                // -mx9: maximum compression
-                // -v100m: split into 100MB volumes
+                // Remove existing archive files if they exist
+                if (fs.existsSync(outputArchive)) {
+                    console.log(`Removing existing archive: ${outputArchive}`);
+                    fs.unlinkSync(outputArchive);
+                }
+
+                // Remove existing volume files if they exist
+                for (let i = 1; i <= 100; i++) {
+                    const volumeFile = path.join('D:\\', `${dirName}.7z.${i.toString().padStart(3, '0')}`);
+                    if (fs.existsSync(volumeFile)) {
+                        console.log(`Removing existing volume: ${volumeFile}`);
+                        fs.unlinkSync(volumeFile);
+                    } else {
+                        break;
+                    }
+                }
+
+                // Determine if volume splitting is needed
+                const needsVolumeSplitting = totalSizeMB >= 100;
+                console.log(`Compression mode: ${needsVolumeSplitting ? 'Volume splitting (100MB)' : 'Single archive'}`);
+
+                // Build 7Zip command based on total size
+                // -mx9: maximum compression level
+                // -v100m: split into 100MB volumes (only if needed)
                 // -t7z: use 7z format
-                const args = [
+                let args = [
                     'a',                    // add to archive
                     '-mx9',                 // maximum compression level
-                    '-v100m',               // create 100MB volumes
+                ];
+
+                // Add volume splitting only if total size exceeds 100MB
+                if (needsVolumeSplitting) {
+                    args.push('-v100m'); // Add volume option after compression level
+                }
+
+                args.push(
                     '-t7z',                 // use 7z format
                     outputArchive,          // output archive path
                     gifDirPath + '\\*'      // directory contents (using * to avoid including the directory itself)
-                ];
+                );
 
                 console.log(`Executing 7z command: 7z ${args.join(' ')}`);
 
@@ -531,11 +578,17 @@ class RobustBookmarkProcessor {
                         const volumeExists = fs.existsSync(volumePattern) || fs.existsSync(outputArchive);
 
                         if (volumeExists) {
+                            // Check if it's actually split into volumes or single file
+                            const isVolumeSplit = fs.existsSync(volumePattern);
+                            const compressionMode = isVolumeSplit ? 'split into volumes' : 'single file';
+
                             resolve({
                                 success: true,
                                 outputPath: outputArchive,
-                                volumes: fs.existsSync(volumePattern) ? 'split into volumes' : 'single file',
-                                message: `GIF文件夹压缩成功: ${dirName}`
+                                volumes: compressionMode,
+                                compressionMode: compressionMode,
+                                totalSizeMB: totalSizeMB,
+                                message: `GIF文件夹${totalSizeMB >= 100 ? '分卷压缩' : '压缩'}成功: ${dirName} (${totalSizeMB}MB)`
                             });
                         } else {
                             reject(new Error('7Zip completed but no output files found'));
@@ -580,11 +633,12 @@ class RobustBookmarkProcessor {
         }
     }
 
-    // Move volume files to D:\picture subdirectories based on volume number
-    async moveVolumeFilesToPictureSubdirs(archivePath, event = null) {
+    // Move archive files to D:\picture directory (handles both single and split archives)
+    async moveArchiveFilesToPicture(archivePath, compressionMode = 'single file', event = null) {
         return new Promise(async (resolve, reject) => {
             try {
-                console.log(`Starting volume files organization for: ${archivePath}`);
+                console.log(`Starting archive files organization for: ${archivePath}`);
+                console.log(`Compression mode: ${compressionMode}`);
 
                 // Ensure D:\picture directory exists
                 const pictureDir = 'D:\\picture';
@@ -593,107 +647,135 @@ class RobustBookmarkProcessor {
                     fs.mkdirSync(pictureDir, { recursive: true });
                 }
 
-                // Find all volume files (both single file and split volumes)
                 const baseName = path.basename(archivePath, '.7z');
                 const archiveDir = path.dirname(archivePath);
-                const volumePattern = path.join(archiveDir, `${baseName}.7z.*`);
-                const mainArchiveFile = path.join(archiveDir, `${baseName}.7z`);
+                let filesToMove = [];
 
-                let volumeFiles = [];
-
-                // Check if split volumes exist
-                if (fs.existsSync(mainArchiveFile.replace('.7z', '.7z.001'))) {
-                    // Find all volume files (.001, .002, etc.)
+                if (compressionMode === 'split into volumes') {
+                    // Handle split volumes
+                    console.log('Processing split volumes...');
                     for (let i = 1; i <= 100; i++) { // Reasonable limit
                         const volumeFile = path.join(archiveDir, `${baseName}.7z.${i.toString().padStart(3, '0')}`);
                         if (fs.existsSync(volumeFile)) {
-                            volumeFiles.push(volumeFile);
+                            filesToMove.push(volumeFile);
                         } else {
                             break; // Stop when no more volume files found
                         }
                     }
-                } else if (fs.existsSync(mainArchiveFile)) {
-                    // Single file archive
-                    volumeFiles.push(mainArchiveFile);
+                    console.log(`Found ${filesToMove.length} volume files to move to subdirectories`);
+                } else {
+                    // Handle single archive file
+                    console.log('Processing single archive file...');
+                    const mainArchiveFile = path.join(archiveDir, `${baseName}.7z`);
+                    if (fs.existsSync(mainArchiveFile)) {
+                        filesToMove.push(mainArchiveFile);
+                    }
+                    console.log(`Found single archive file to move: ${mainArchiveFile}`);
                 }
 
-                if (volumeFiles.length === 0) {
+                if (filesToMove.length === 0) {
                     reject(new Error('No archive files found to move'));
                     return;
                 }
 
-                console.log(`Found ${volumeFiles.length} volume files to organize`);
-
                 let movedFiles = [];
                 let errors = [];
 
-                // Process each volume file
-                for (let i = 0; i < volumeFiles.length; i++) {
-                    const volumeFile = volumeFiles[i];
+                // Process each file based on compression mode
+                for (let i = 0; i < filesToMove.length; i++) {
+                    const fileToMove = filesToMove[i];
 
                     try {
-                        // Extract volume number from filename
-                        let volumeNumber = null;
-                        const volumeMatch = volumeFile.match(/\.7z\.(\d+)$/);
+                        const fileName = path.basename(fileToMove);
 
-                        if (volumeMatch) {
-                            // Split volume: extract number (001, 002, etc.)
-                            volumeNumber = volumeMatch[1];
+                        if (compressionMode === 'split into volumes') {
+                            // Split volumes: move to numbered subdirectories
+                            const volumeMatch = fileName.match(/\.7z\.(\d+)$/);
+                            if (volumeMatch) {
+                                const volumeNumber = volumeMatch[1];
+                                const targetSubdir = path.join(pictureDir, volumeNumber);
+
+                                // Create target subdirectory if it doesn't exist
+                                if (!fs.existsSync(targetSubdir)) {
+                                    console.log(`Creating subdirectory: ${targetSubdir}`);
+                                    fs.mkdirSync(targetSubdir, { recursive: true });
+                                }
+
+                                const targetPath = path.join(targetSubdir, fileName);
+                                console.log(`Moving ${fileName} to ${targetSubdir}`);
+
+                                // Use synchronous move to ensure completion
+                                fs.renameSync(fileToMove, targetPath);
+
+                                movedFiles.push({
+                                    originalPath: fileToMove,
+                                    targetPath: targetPath,
+                                    volumeNumber: volumeNumber,
+                                    size: fs.statSync(targetPath).size,
+                                    type: 'volume'
+                                });
+
+                                // Send progress update
+                                if (event) {
+                                    const progress = Math.round(((i + 1) / filesToMove.length) * 100);
+                                    event.sender.send('processing-progress', {
+                                        current: progress,
+                                        total: 100,
+                                        message: `移动分卷文件: ${volumeNumber} (${i + 1}/${filesToMove.length})`
+                                    });
+                                }
+
+                                console.log(`Successfully moved ${fileName} to subdirectory ${volumeNumber}`);
+                            }
                         } else {
-                            // Single file: use 001 as default
-                            volumeNumber = '001';
-                        }
+                            // Single archive: move directly to picture directory
+                            const targetPath = path.join(pictureDir, fileName);
+                            console.log(`Moving ${fileName} to picture directory`);
 
-                        // Create target subdirectory if it doesn't exist
-                        const targetSubdir = path.join(pictureDir, volumeNumber);
-                        if (!fs.existsSync(targetSubdir)) {
-                            console.log(`Creating subdirectory: ${targetSubdir}`);
-                            fs.mkdirSync(targetSubdir, { recursive: true });
-                        }
+                            // Use synchronous move to ensure completion
+                            fs.renameSync(fileToMove, targetPath);
 
-                        // Move the file to the subdirectory
-                        const fileName = path.basename(volumeFile);
-                        const targetPath = path.join(targetSubdir, fileName);
-
-                        console.log(`Moving ${fileName} to ${targetSubdir}`);
-
-                        // Use synchronous move to ensure completion
-                        fs.renameSync(volumeFile, targetPath);
-
-                        movedFiles.push({
-                            originalPath: volumeFile,
-                            targetPath: targetPath,
-                            volumeNumber: volumeNumber,
-                            size: fs.statSync(targetPath).size
-                        });
-
-                        // Send progress update
-                        if (event) {
-                            const progress = Math.round(((i + 1) / volumeFiles.length) * 100);
-                            event.sender.send('processing-progress', {
-                                current: progress,
-                                total: 100,
-                                message: `移动分卷文件: ${volumeNumber} (${i + 1}/${volumeFiles.length})`
+                            movedFiles.push({
+                                originalPath: fileToMove,
+                                targetPath: targetPath,
+                                volumeNumber: null,
+                                size: fs.statSync(targetPath).size,
+                                type: 'single'
                             });
-                        }
 
-                        console.log(`Successfully moved ${fileName} to subdirectory ${volumeNumber}`);
+                            // Send progress update
+                            if (event) {
+                                const progress = Math.round(((i + 1) / filesToMove.length) * 100);
+                                event.sender.send('processing-progress', {
+                                    current: progress,
+                                    total: 100,
+                                    message: `移动压缩包: ${fileName} (${i + 1}/${filesToMove.length})`
+                                });
+                            }
+
+                            console.log(`Successfully moved ${fileName} to picture directory`);
+                        }
 
                     } catch (moveError) {
-                        const errorMsg = `Failed to move ${path.basename(volumeFile)}: ${moveError.message}`;
+                        const errorMsg = `Failed to move ${path.basename(fileToMove)}: ${moveError.message}`;
                         console.error(errorMsg);
                         errors.push(errorMsg);
                     }
                 }
 
-                console.log(`\n=== Volume Files Organization Complete ===`);
+                console.log(`\n=== Archive Files Organization Complete ===`);
                 console.log(`Successfully moved: ${movedFiles.length} files`);
+                console.log(`Compression mode: ${compressionMode}`);
                 console.log(`Errors: ${errors.length} files`);
 
                 if (movedFiles.length > 0) {
                     console.log('\nMoved files details:');
                     movedFiles.forEach(movedFile => {
-                        console.log(`  📁 ${movedFile.volumeNumber}/: ${path.basename(movedFile.targetPath)} (${Math.round(movedFile.size / 1024 / 1024)}MB)`);
+                        if (movedFile.type === 'volume') {
+                            console.log(`  📁 ${movedFile.volumeNumber}/: ${path.basename(movedFile.targetPath)} (${Math.round(movedFile.size / 1024 / 1024)}MB)`);
+                        } else {
+                            console.log(`  📁 picture\\: ${path.basename(movedFile.targetPath)} (${Math.round(movedFile.size / 1024 / 1024)}MB)`);
+                        }
                     });
                 }
 
@@ -705,13 +787,14 @@ class RobustBookmarkProcessor {
                 if (movedFiles.length === 0) {
                     reject(new Error('No files were successfully moved'));
                 } else {
+                    const moveType = compressionMode === 'split into volumes' ? '分卷文件' : '压缩包';
                     resolve({
                         success: true,
                         movedFiles: movedFiles,
                         errors: errors,
-                        totalProcessed: volumeFiles.length,
+                        totalProcessed: filesToMove.length,
                         totalMoved: movedFiles.length,
-                        message: `成功移动 ${movedFiles.length} 个分卷文件到 picture 目录的对应子文件夹`
+                        message: `成功移动 ${movedFiles.length} 个${moveType}到 picture 目录`
                     });
                 }
 
