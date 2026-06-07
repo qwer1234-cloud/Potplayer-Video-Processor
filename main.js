@@ -3,6 +3,11 @@ const path = require('path');
 const { exec } = require('child_process');
 const { checkForUpdates } = require('./check-update');
 const fs = require('fs');
+const {
+  getRememberedSelectionPath,
+  mergeSettingsForSave,
+  rememberSelectionPaths
+} = require('./selection-path-config');
 
 // Import bookmark processors
 const BookmarkProcessor = require('./scripts/bookmark_processor');
@@ -19,6 +24,16 @@ global.RobustBookmarkProcessor = RobustBookmarkProcessor;
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
 const windowStatePath = path.join(userDataPath, 'window-state.json');
+const DEFAULT_SELECTION_PATHS = {
+  default: 'D:\\',
+  gif: 'D:\\',
+  'bookmark-gif': 'D:\\',
+  video: 'C:\\Users\\sunhao\\Desktop\\ToWatch',
+  subtitle: 'C:\\Users\\sunhao\\Desktop\\ToWatch',
+  '7zip': 'E:\\',
+  'add-prefix': 'E:\\',
+  'remove-prefix': 'E:\\'
+};
 
 // Increase memory limits and enable garbage collection
 app.commandLine.appendSwitch('--max-old-space-size', '4096');
@@ -44,6 +59,8 @@ function logWithTimestamp(message, level = 'INFO') {
 // Data persistence functions
 function saveSettings(settings) {
   try {
+    const settingsToSave = mergeSettingsForSave(loadSettings(), settings);
+
     // Ensure userData directory exists
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
@@ -51,7 +68,7 @@ function saveSettings(settings) {
 
     // Save settings with atomic write
     const tempPath = settingsPath + '.tmp';
-    fs.writeFileSync(tempPath, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(tempPath, JSON.stringify(settingsToSave, null, 2));
     fs.renameSync(tempPath, settingsPath);
 
     logWithTimestamp('Settings saved successfully');
@@ -78,8 +95,18 @@ function loadSettings() {
     minutes: '00',
     seconds: '00',
     milliseconds: '000',
-    duration: '1'
+    duration: '1',
+    lastSelectionPaths: {}
   };
+}
+
+function getSelectionDefaultPath(format) {
+  return getRememberedSelectionPath(loadSettings(), format, DEFAULT_SELECTION_PATHS);
+}
+
+function rememberSelectionPath(format, filePaths) {
+  const settings = rememberSelectionPaths(loadSettings(), format, filePaths);
+  saveSettings(settings);
 }
 
 function saveWindowState(windowState) {
@@ -450,11 +477,12 @@ ipcMain.handle('select-file', async (event, format) => {
     // For 7Zip and prefix operations, we want to select folders
     const result = await dialog.showOpenDialog(mainWindow, {
       title: title,
-      defaultPath: 'E:\\', // Default to E drive as requested
+      defaultPath: getSelectionDefaultPath(format),
       properties: ['openDirectory'] // Select folder instead of file
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
+      rememberSelectionPath(format, result.filePaths);
       return result.filePaths[0]; // Return the selected folder path
     }
     return null;
@@ -468,12 +496,13 @@ ipcMain.handle('select-file', async (event, format) => {
 
   const result = await dialog.showOpenDialog(mainWindow, {
     title: title,
-    defaultPath: format === 'video' || format === 'subtitle' ? 'C:\\Users\\sunhao\\Desktop\\ToWatch' : 'D:\\',
+    defaultPath: getSelectionDefaultPath(format),
     filters: filters,
     properties: format === 'bookmark-gif' ? ['openMultiFile'] : ['openFile']
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
+    rememberSelectionPath(format, result.filePaths);
     // For bookmark-gif format, return array of files; for others, return single file
     if (format === 'bookmark-gif') {
       return result.filePaths; // Return array of PBF files

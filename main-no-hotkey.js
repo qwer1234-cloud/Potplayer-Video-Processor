@@ -3,11 +3,21 @@ const path = require('path');
 const { exec } = require('child_process');
 const { checkForUpdates } = require('./check-update');
 const fs = require('fs');
+const {
+  getRememberedSelectionPath,
+  mergeSettingsForSave,
+  rememberSelectionPaths
+} = require('./selection-path-config');
 
 // Data persistence
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
 const windowStatePath = path.join(userDataPath, 'window-state.json');
+const DEFAULT_SELECTION_PATHS = {
+  default: 'D:\\',
+  gif: 'D:\\',
+  video: 'D:\\'
+};
 
 // Increase memory limits and enable garbage collection
 app.commandLine.appendSwitch('--max-old-space-size', '4096');
@@ -33,6 +43,8 @@ function logWithTimestamp(message, level = 'INFO') {
 // Data persistence functions
 function saveSettings(settings) {
   try {
+    const settingsToSave = mergeSettingsForSave(loadSettings(), settings);
+
     // Ensure userData directory exists
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
@@ -40,7 +52,7 @@ function saveSettings(settings) {
 
     // Save settings with atomic write
     const tempPath = settingsPath + '.tmp';
-    fs.writeFileSync(tempPath, JSON.stringify(settings, null, 2));
+    fs.writeFileSync(tempPath, JSON.stringify(settingsToSave, null, 2));
     fs.renameSync(tempPath, settingsPath);
 
     logWithTimestamp('Settings saved successfully');
@@ -67,8 +79,18 @@ function loadSettings() {
     minutes: '00',
     seconds: '00',
     milliseconds: '000',
-    duration: '1'
+    duration: '1',
+    lastSelectionPaths: {}
   };
+}
+
+function getSelectionDefaultPath(format) {
+  return getRememberedSelectionPath(loadSettings(), format, DEFAULT_SELECTION_PATHS);
+}
+
+function rememberSelectionPath(format, filePaths) {
+  const settings = rememberSelectionPaths(loadSettings(), format, filePaths);
+  saveSettings(settings);
 }
 
 function saveWindowState(windowState) {
@@ -417,10 +439,10 @@ app.on('activate', () => {
 });
 
 // 处理文件选择
-ipcMain.handle('select-file', async () => {
+ipcMain.handle('select-file', async (event, format = 'video') => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: '选择视频文件',
-    defaultPath: 'D:\\',
+    defaultPath: getSelectionDefaultPath(format),
     filters: [
       { name: '视频文件', extensions: ['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'webm'] },
       { name: '所有文件', extensions: ['*'] }
@@ -429,6 +451,7 @@ ipcMain.handle('select-file', async () => {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
+    rememberSelectionPath(format, result.filePaths);
     return result.filePaths[0];
   }
   return null;
