@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // 暴露安全的API给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (format) => ipcRenderer.invoke('select-file', format),
+  selectFFmpegPath: () => ipcRenderer.invoke('select-ffmpeg-path'),
   processVideo: (data) => ipcRenderer.invoke('process-video', data),
   processVideoWithPrefix: (data, prefix) => ipcRenderer.invoke('process-video-with-prefix', data, prefix),
   parsePBFBookmarks: (pbfFilePath) => ipcRenderer.invoke('parse-pbf-bookmarks', pbfFilePath),

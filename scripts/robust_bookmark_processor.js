@@ -5,6 +5,10 @@
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const {
+    getFFmpegToolEnvironment,
+    getFFmpegToolPath
+} = require('../ffmpeg-config');
 
 class RobustBookmarkProcessor {
     constructor(options = {}) {
@@ -15,6 +19,7 @@ class RobustBookmarkProcessor {
         this.defaultQuality = options.defaultQuality || 25; // Increased for better compression
         this.customOutputDir = null; // Store custom output directory based on PBF filename
         this.enableAutoCompression = options.enableAutoCompression !== false; // Default true
+        this.ffmpegPath = options.ffmpegPath || '';
 
         // Compression optimization settings
         this.compressionLevel = options.compressionLevel || 'balanced'; // balanced: compression
@@ -364,9 +369,13 @@ class RobustBookmarkProcessor {
 
     async executeFFmpegCommand(args) {
         return new Promise((resolve, reject) => {
-            console.log(`\u2701 FFmpeg command: ffmpeg ${args.map(arg => `"${arg}"`).join(' ')}`);
+            const settings = { ffmpegPath: this.ffmpegPath };
+            const ffmpegCommand = getFFmpegToolPath(settings, 'ffmpeg');
+            console.log(`\u2701 FFmpeg command: ${ffmpegCommand} ${args.map(arg => `"${arg}"`).join(' ')}`);
 
-            const ffmpegProcess = spawn('ffmpeg', args);
+            const ffmpegProcess = spawn(ffmpegCommand, args, {
+                env: getFFmpegToolEnvironment(settings)
+            });
 
             let stdout = '';
             let stderr = '';

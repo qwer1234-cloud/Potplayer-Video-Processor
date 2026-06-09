@@ -4,6 +4,8 @@ const browseBtn = document.getElementById('browseBtn');
 const processBtn = document.getElementById('processBtn');
 const statusDiv = document.getElementById('status');
 const formatSelect = document.getElementById('format');
+const ffmpegPathInput = document.getElementById('ffmpegPath');
+const browseFFmpegBtn = document.getElementById('browseFFmpegBtn');
 
 // Bookmark elements
 const bookmarkInfo = document.getElementById('bookmarkInfo');
@@ -98,6 +100,7 @@ function initializeDurationSelect() {
 function setupEventListeners() {
     // File browse button
     browseBtn.addEventListener('click', handleFileBrowse);
+    browseFFmpegBtn.addEventListener('click', handleFFmpegBrowse);
 
     // Process button
     processBtn.addEventListener('click', handleProcess);
@@ -113,6 +116,7 @@ function setupEventListeners() {
 
     // Save settings on any change
     filePathInput.addEventListener('input', debounce(saveCurrentSettings, 500));
+    ffmpegPathInput.addEventListener('input', debounce(saveCurrentSettings, 500));
     hoursSelect.addEventListener('change', debounce(saveCurrentSettings, 500));
     minutesSelect.addEventListener('change', debounce(saveCurrentSettings, 500));
     secondsSelect.addEventListener('change', debounce(saveCurrentSettings, 500));
@@ -187,6 +191,19 @@ async function handleFileBrowse() {
         }
     } catch (error) {
         showStatus(`File selection failed: ${error.message}`, 'error');
+    }
+}
+
+async function handleFFmpegBrowse() {
+    try {
+        const selectedPath = await window.electronAPI.selectFFmpegPath();
+        if (selectedPath) {
+            ffmpegPathInput.value = selectedPath;
+            await saveCurrentSettings();
+            showStatus('FFmpeg path saved', 'success');
+        }
+    } catch (error) {
+        showStatus(`FFmpeg path selection failed: ${error.message}`, 'error');
     }
 }
 
@@ -292,7 +309,8 @@ function getCurrentSettings() {
         minutes: minutesSelect.value,
         seconds: secondsSelect.value,
         milliseconds: millisecondsInput.value.padStart(3, '0'),
-        duration: durationSelect.value
+        duration: durationSelect.value,
+        ffmpegPath: ffmpegPathInput.value.trim()
     };
 }
 
@@ -335,6 +353,10 @@ async function loadSavedSettings() {
 
         if (settings.duration) {
             durationSelect.value = settings.duration;
+        }
+
+        if (settings.ffmpegPath) {
+            ffmpegPathInput.value = settings.ffmpegPath;
         }
 
         // Set format radio button

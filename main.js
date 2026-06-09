@@ -8,6 +8,12 @@ const {
   mergeSettingsForSave,
   rememberSelectionPaths
 } = require('./selection-path-config');
+const {
+  getFFmpegToolEnvironment,
+  getFFmpegToolPath,
+  mergeFFmpegSettingsForSave,
+  quoteCommandPath
+} = require('./ffmpeg-config');
 
 // Import bookmark processors
 const BookmarkProcessor = require('./scripts/bookmark_processor');
@@ -32,7 +38,8 @@ const DEFAULT_SELECTION_PATHS = {
   subtitle: 'C:\\Users\\sunhao\\Desktop\\ToWatch',
   '7zip': 'E:\\',
   'add-prefix': 'E:\\',
-  'remove-prefix': 'E:\\'
+  'remove-prefix': 'E:\\',
+  ffmpeg: 'D:\\ProcessVideo-Beta\\tools\\ffmpeg\\bin'
 };
 
 // Increase memory limits and enable garbage collection
@@ -59,7 +66,8 @@ function logWithTimestamp(message, level = 'INFO') {
 // Data persistence functions
 function saveSettings(settings) {
   try {
-    const settingsToSave = mergeSettingsForSave(loadSettings(), settings);
+    const existingSettings = loadSettings();
+    const settingsToSave = mergeFFmpegSettingsForSave(existingSettings, mergeSettingsForSave(existingSettings, settings));
 
     // Ensure userData directory exists
     if (!fs.existsSync(userDataPath)) {
@@ -96,6 +104,7 @@ function loadSettings() {
     seconds: '00',
     milliseconds: '000',
     duration: '1',
+    ffmpegPath: '',
     lastSelectionPaths: {}
   };
 }
@@ -513,6 +522,22 @@ ipcMain.handle('select-file', async (event, format) => {
   return null;
 });
 
+// Select FFmpeg bin directory
+ipcMain.handle('select-ffmpeg-path', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select FFmpeg bin folder',
+    defaultPath: getSelectionDefaultPath('ffmpeg'),
+    properties: ['openDirectory']
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    rememberSelectionPath('ffmpeg', result.filePaths);
+    return result.filePaths[0];
+  }
+
+  return null;
+});
+
 // Save settings
 ipcMain.handle('save-settings', async (event, settings) => {
   saveSettings(settings);
@@ -909,7 +934,8 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
       defaultWidth: 960,
       defaultHeight: 540,
       defaultFps: 15,
-      defaultQuality: 20
+      defaultQuality: 20,
+      ffmpegPath: loadSettings().ffmpegPath
     });
 
     // Determine which bookmarks to use
@@ -984,7 +1010,8 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
         defaultWidth: 960,
         defaultHeight: 540,
         defaultFps: 15,
-        defaultQuality: 20
+        defaultQuality: 20,
+        ffmpegPath: loadSettings().ffmpegPath
       });
 
       const result = await robustProcessor.processBookmarkPairs([startBookmark, endBookmark], filePath, event);
@@ -1693,9 +1720,11 @@ async function detectSubtitles(videoPath) {
     logWithTimestamp(`Detecting subtitles in: ${videoPath}`);
 
     // Use ffprobe to detect subtitle streams
-    const command = `ffprobe -v error -select_streams s -show_entries stream=index,codec_name,codec_tag_string:stream_tags=language,title -of csv=p=0 "${videoPath}"`;
+    const settings = loadSettings();
+    const ffprobePath = quoteCommandPath(getFFmpegToolPath(settings, 'ffprobe'));
+    const command = `${ffprobePath} -v error -select_streams s -show_entries stream=index,codec_name,codec_tag_string:stream_tags=language,title -of csv=p=0 "${videoPath}"`;
 
-    exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings) }, (error, stdout, stderr) => {
       if (error) {
         // No subtitles is not an error, just return empty array
         if (stderr.includes('No such file')) {
@@ -1748,9 +1777,11 @@ async function extractSubtitle(videoPath, streamIndex, language) {
     const outputFileName = `${videoBaseName}_${language || 'subtitle'}_${streamIndex}.srt`;
     const outputPath = path.join('D:', outputFileName); // Output to D drive root
 
-    const command = `ffmpeg -i "${videoPath}" -map 0:s:${streamIndex} -c:s srt "${outputPath}"`;
+    const settings = loadSettings();
+    const ffmpegPath = quoteCommandPath(getFFmpegToolPath(settings, 'ffmpeg'));
+    const command = `${ffmpegPath} -i "${videoPath}" -map 0:s:${streamIndex} -c:s srt "${outputPath}"`;
 
-    exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings) }, (error, stdout, stderr) => {
       if (error) {
         logWithTimestamp(`Subtitle extraction failed: ${error.message}`);
         reject(new Error(`字幕提取失败: ${error.message}`));
