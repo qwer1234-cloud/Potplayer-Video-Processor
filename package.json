@@ -1,6 +1,6 @@
 {
   "name": "video-processor-beta",
-  "version": "5.12.0",
+  "version": "5.13.1",
   "description": "视频片段提取和GIF制作工具 (Beta版本)",
   "main": "main.js",
   "scripts": {
@@ -32,11 +32,17 @@
       "**/*",
       "!node_modules",
       "!dist",
+      "!tools/downloads",
+      "!tools/downloads/**",
       "!*.ps1",
       "!*.bat",
       "!*.md",
       "!icon.ico"
     ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "win": {
       "target": [
         {

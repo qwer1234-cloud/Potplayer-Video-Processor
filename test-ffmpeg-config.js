@@ -35,6 +35,12 @@ assert.strictEqual(
   'falls back to PATH command name when no FFmpeg path is configured'
 );
 
+assert.strictEqual(
+  getFFmpegToolPath({}, 'ffmpeg', { defaultBinPaths: [configuredBin] }),
+  path.join(configuredBin, 'ffmpeg.exe'),
+  'resolves ffmpeg.exe from a bundled default bin directory when no path is configured'
+);
+
 const env = getFFmpegToolEnvironment({ ffmpegPath: configuredBin }, { PATH: 'C:\\Windows\\System32' });
 assert.ok(
   env.PATH.startsWith(`${configuredBin};`),

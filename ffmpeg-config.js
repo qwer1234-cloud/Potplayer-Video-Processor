@@ -22,23 +22,33 @@ function getConfiguredFFmpegBinPath(settings = {}) {
   return configuredPath;
 }
 
-function getFFmpegToolPath(settings = {}, toolName) {
+function getCandidateBinPaths(settings = {}, options = {}) {
+  return [
+    getConfiguredFFmpegBinPath(settings),
+    ...(options.defaultBinPaths || [])
+  ].filter(Boolean);
+}
+
+function getFFmpegToolPath(settings = {}, toolName, options = {}) {
   const normalizedToolName = toolName.toLowerCase().endsWith('.exe') ? toolName : `${toolName}.exe`;
-  const binPath = getConfiguredFFmpegBinPath(settings);
-  if (!binPath) {
-    return toolName;
+  const candidateBinPaths = getCandidateBinPaths(settings, options);
+
+  for (const binPath of candidateBinPaths) {
+    const toolPath = path.join(binPath, normalizedToolName);
+    if (fs.existsSync(toolPath)) {
+      return toolPath;
+    }
   }
 
-  const toolPath = path.join(binPath, normalizedToolName);
-  return fs.existsSync(toolPath) ? toolPath : toolName;
+  return toolName;
 }
 
 function getPathKey(env = process.env) {
   return Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
 }
 
-function getFFmpegToolEnvironment(settings = {}, baseEnv = process.env) {
-  const binPath = getConfiguredFFmpegBinPath(settings);
+function getFFmpegToolEnvironment(settings = {}, baseEnv = process.env, options = {}) {
+  const binPath = getCandidateBinPaths(settings, options).find((candidatePath) => fs.existsSync(candidatePath));
   if (!binPath) {
     return baseEnv;
   }

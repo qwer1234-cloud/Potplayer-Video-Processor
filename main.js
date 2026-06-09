@@ -118,6 +118,18 @@ function rememberSelectionPath(format, filePaths) {
   saveSettings(settings);
 }
 
+function getBundledFFmpegBinPaths() {
+  const pathsToCheck = [
+    path.join(__dirname, 'tools', 'ffmpeg', 'bin')
+  ];
+
+  if (process.resourcesPath) {
+    pathsToCheck.push(path.join(process.resourcesPath, 'app', 'tools', 'ffmpeg', 'bin'));
+  }
+
+  return pathsToCheck;
+}
+
 function saveWindowState(windowState) {
   try {
     if (!fs.existsSync(userDataPath)) {
@@ -935,7 +947,8 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
       defaultHeight: 540,
       defaultFps: 15,
       defaultQuality: 20,
-      ffmpegPath: loadSettings().ffmpegPath
+      ffmpegPath: loadSettings().ffmpegPath,
+      ffmpegDefaultPaths: getBundledFFmpegBinPaths()
     });
 
     // Determine which bookmarks to use
@@ -1011,7 +1024,8 @@ ipcMain.handle('process-video', async (event, { filePath, format, startTime, dur
         defaultHeight: 540,
         defaultFps: 15,
         defaultQuality: 20,
-        ffmpegPath: loadSettings().ffmpegPath
+        ffmpegPath: loadSettings().ffmpegPath,
+        ffmpegDefaultPaths: getBundledFFmpegBinPaths()
       });
 
       const result = await robustProcessor.processBookmarkPairs([startBookmark, endBookmark], filePath, event);
@@ -1721,10 +1735,11 @@ async function detectSubtitles(videoPath) {
 
     // Use ffprobe to detect subtitle streams
     const settings = loadSettings();
-    const ffprobePath = quoteCommandPath(getFFmpegToolPath(settings, 'ffprobe'));
+    const defaultBinPaths = getBundledFFmpegBinPaths();
+    const ffprobePath = quoteCommandPath(getFFmpegToolPath(settings, 'ffprobe', { defaultBinPaths }));
     const command = `${ffprobePath} -v error -select_streams s -show_entries stream=index,codec_name,codec_tag_string:stream_tags=language,title -of csv=p=0 "${videoPath}"`;
 
-    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings) }, (error, stdout, stderr) => {
+    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings, process.env, { defaultBinPaths }) }, (error, stdout, stderr) => {
       if (error) {
         // No subtitles is not an error, just return empty array
         if (stderr.includes('No such file')) {
@@ -1778,10 +1793,11 @@ async function extractSubtitle(videoPath, streamIndex, language) {
     const outputPath = path.join('D:', outputFileName); // Output to D drive root
 
     const settings = loadSettings();
-    const ffmpegPath = quoteCommandPath(getFFmpegToolPath(settings, 'ffmpeg'));
+    const defaultBinPaths = getBundledFFmpegBinPaths();
+    const ffmpegPath = quoteCommandPath(getFFmpegToolPath(settings, 'ffmpeg', { defaultBinPaths }));
     const command = `${ffmpegPath} -i "${videoPath}" -map 0:s:${streamIndex} -c:s srt "${outputPath}"`;
 
-    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings) }, (error, stdout, stderr) => {
+    exec(command, { encoding: 'utf8', env: getFFmpegToolEnvironment(settings, process.env, { defaultBinPaths }) }, (error, stdout, stderr) => {
       if (error) {
         logWithTimestamp(`Subtitle extraction failed: ${error.message}`);
         reject(new Error(`字幕提取失败: ${error.message}`));

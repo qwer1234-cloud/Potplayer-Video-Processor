@@ -20,6 +20,7 @@ class RobustBookmarkProcessor {
         this.customOutputDir = null; // Store custom output directory based on PBF filename
         this.enableAutoCompression = options.enableAutoCompression !== false; // Default true
         this.ffmpegPath = options.ffmpegPath || '';
+        this.ffmpegDefaultPaths = options.ffmpegDefaultPaths || [];
 
         // Compression optimization settings
         this.compressionLevel = options.compressionLevel || 'balanced'; // balanced: compression
@@ -370,11 +371,12 @@ class RobustBookmarkProcessor {
     async executeFFmpegCommand(args) {
         return new Promise((resolve, reject) => {
             const settings = { ffmpegPath: this.ffmpegPath };
-            const ffmpegCommand = getFFmpegToolPath(settings, 'ffmpeg');
+            const ffmpegOptions = { defaultBinPaths: this.ffmpegDefaultPaths };
+            const ffmpegCommand = getFFmpegToolPath(settings, 'ffmpeg', ffmpegOptions);
             console.log(`\u2701 FFmpeg command: ${ffmpegCommand} ${args.map(arg => `"${arg}"`).join(' ')}`);
 
             const ffmpegProcess = spawn(ffmpegCommand, args, {
-                env: getFFmpegToolEnvironment(settings)
+                env: getFFmpegToolEnvironment(settings, process.env, ffmpegOptions)
             });
 
             let stdout = '';
