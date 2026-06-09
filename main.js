@@ -124,6 +124,7 @@ function getBundledFFmpegBinPaths() {
   ];
 
   if (process.resourcesPath) {
+    pathsToCheck.push(path.join(process.resourcesPath, 'tools', 'ffmpeg', 'bin'));
     pathsToCheck.push(path.join(process.resourcesPath, 'app', 'tools', 'ffmpeg', 'bin'));
   }
 

@@ -39,6 +39,16 @@
       "!*.md",
       "!icon.ico"
     ],
+    "extraResources": [
+      {
+        "from": "tools/ffmpeg/bin",
+        "to": "tools/ffmpeg/bin",
+        "filter": [
+          "ffmpeg.exe",
+          "ffprobe.exe"
+        ]
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
