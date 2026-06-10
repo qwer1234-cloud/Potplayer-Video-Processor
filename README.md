@@ -62,6 +62,91 @@ npm run build      # electron-builder → portable .exe
 npm run package    # electron-packager
 ```
 
+### PotPlayer Extension Usage
+
+The packaged app can be used as a PotPlayer PlayParse extension companion. When PotPlayer opens a local video, the extension checks whether a same-directory, same-name `.pbf` bookmark file exists. If it does, it launches ProcessVideo in CLI mode and generates GIFs from the bookmark time pairs.
+
+#### Install From the App
+
+1. Build or download `Video Processing Tool Beta 5.13.1.exe`.
+2. Open the app and find the **PotPlayer Plugin** panel.
+3. Click **Install**. If PotPlayer is installed under `C:\Program Files`, click **Install Admin** and approve the Windows UAC prompt.
+4. Restart PotPlayer after installation.
+
+The extension files are installed to:
+
+```text
+C:\Program Files\DAUM\PotPlayer\Extension\Media\PlayParse\
+```
+
+The main files are:
+
+- `MediaPlayParse - ProcessVideo.as` - PotPlayer AngelScript bridge.
+- `ProcessVideo_default.ini` - default plugin configuration.
+- `ProcessVideo.ini` - local user configuration; the installer preserves an existing file.
+
+#### Install From Source
+
+```bash
+npm run install-potplayer-extension -- --potplayer "C:\Program Files\DAUM\PotPlayer" --companion "D:\ProcessVideo-Beta\dist\Video Processing Tool Beta 5.13.1.exe" --node ""
+```
+
+If the command fails with `EPERM`, run the app's **Install Admin** button or start the command from an elevated terminal.
+
+#### Required File Layout
+
+For automatic GIF generation, the video and bookmark file must be in the same folder and share the same base name:
+
+```text
+C:\Users\sunhao\Desktop\ToWatch\太平年.E01.mp4
+C:\Users\sunhao\Desktop\ToWatch\太平年.E01.pbf
+```
+
+When the video is opened in PotPlayer, the extension runs the packaged companion like this:
+
+```text
+"Video Processing Tool Beta 5.13.1.exe" --processvideo-cli bookmark-gif --video "<current video>"
+```
+
+The CLI infers the `.pbf` path, parses bookmark pairs, generates GIFs, and writes a report.
+
+#### Configuration
+
+`ProcessVideo.ini` supports these settings:
+
+```ini
+[PROCESSVIDEO]
+companion_path=D:\ProcessVideo-Beta\dist\Video Processing Tool Beta 5.13.1.exe
+node_path=
+mode=bookmark-gif
+open_ui_after_start=0
+report_path=C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json
+timeout_seconds=10
+show_launch_message=1
+cooldown_seconds=30
+require_pbf_exists=1
+```
+
+Key fields:
+
+- `companion_path`: packaged exe path, or `cli/processvideo-cli.js` during development.
+- `node_path`: leave empty for packaged exe; use `node` for the development CLI.
+- `report_path`: JSON report written after each plugin run.
+- `cooldown_seconds`: prevents repeated PotPlayer parse events from starting duplicate jobs.
+- `require_pbf_exists=1`: only runs when a matching `.pbf` exists next to the video.
+
+#### Output and Verification
+
+- GIF output follows the normal bookmark GIF rule: `D:\{PBF_Filename}\`.
+- Last plugin report: `C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json`.
+- A successful report contains `"success": true` and an `outputs` array with generated GIF paths.
+
+Notes:
+
+- FFmpeg is still required for GIF generation. The packaged build can use the bundled `tools\ffmpeg\bin` path.
+- 7-Zip is only needed for archive compression. GIF generation can succeed even if compression fails because `7z.exe` is missing.
+- PotPlayer PlayParse extensions are parse-time hooks, not toolbar buttons. The trigger happens when PotPlayer loads/parses the media item.
+
 ### Feature Guide
 
 #### 1. Video Clip Extraction
@@ -292,6 +377,91 @@ npm start
 npm run build      # electron-builder → 便携版 .exe
 npm run package    # electron-packager
 ```
+
+### PotPlayer 插件使用说明
+
+打包后的 `Video Processing Tool Beta 5.13.1.exe` 可以作为 PotPlayer PlayParse 插件的伴随程序使用。PotPlayer 打开本地视频时，插件会检查视频同目录下是否存在同名 `.pbf` 书签文件；如果存在，就自动调用 ProcessVideo 的 CLI 模式，按书签时间对生成 GIF。
+
+#### 从应用内安装
+
+1. 构建或下载 `Video Processing Tool Beta 5.13.1.exe`。
+2. 打开应用，在界面中找到 **PotPlayer Plugin** 面板。
+3. 点击 **Install**。如果 PotPlayer 安装在 `C:\Program Files` 下，点击 **Install Admin** 并确认 Windows UAC 弹窗。
+4. 安装完成后重启 PotPlayer。
+
+插件安装目录：
+
+```text
+C:\Program Files\DAUM\PotPlayer\Extension\Media\PlayParse\
+```
+
+主要文件：
+
+- `MediaPlayParse - ProcessVideo.as`：PotPlayer AngelScript 桥接脚本。
+- `ProcessVideo_default.ini`：默认插件配置。
+- `ProcessVideo.ini`：用户本地配置；安装器不会覆盖已有文件。
+
+#### 从源码安装
+
+```bash
+npm run install-potplayer-extension -- --potplayer "C:\Program Files\DAUM\PotPlayer" --companion "D:\ProcessVideo-Beta\dist\Video Processing Tool Beta 5.13.1.exe" --node ""
+```
+
+如果遇到 `EPERM`，说明没有 Program Files 写入权限，请使用应用里的 **Install Admin**，或在管理员终端里执行安装命令。
+
+#### 文件放置规则
+
+自动生成 GIF 时，视频和书签文件必须在同一目录，并且主文件名一致：
+
+```text
+C:\Users\sunhao\Desktop\ToWatch\太平年.E01.mp4
+C:\Users\sunhao\Desktop\ToWatch\太平年.E01.pbf
+```
+
+PotPlayer 打开视频后，插件会调用：
+
+```text
+"Video Processing Tool Beta 5.13.1.exe" --processvideo-cli bookmark-gif --video "<当前视频路径>"
+```
+
+CLI 会自动推断 `.pbf` 路径，解析书签时间对，生成 GIF，并写入运行报告。
+
+#### 配置项
+
+`ProcessVideo.ini` 示例：
+
+```ini
+[PROCESSVIDEO]
+companion_path=D:\ProcessVideo-Beta\dist\Video Processing Tool Beta 5.13.1.exe
+node_path=
+mode=bookmark-gif
+open_ui_after_start=0
+report_path=C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json
+timeout_seconds=10
+show_launch_message=1
+cooldown_seconds=30
+require_pbf_exists=1
+```
+
+关键配置：
+
+- `companion_path`：打包 exe 路径；开发模式下也可以指向 `cli/processvideo-cli.js`。
+- `node_path`：打包 exe 留空；开发 CLI 使用 `node`。
+- `report_path`：每次插件运行后的 JSON 报告路径。
+- `cooldown_seconds`：避免 PotPlayer 重复解析同一个视频时多次启动任务。
+- `require_pbf_exists=1`：只有视频旁边存在同名 `.pbf` 时才触发。
+
+#### 输出与验证
+
+- GIF 输出遵循书签 GIF 规则：`D:\{PBF文件名}\`。
+- 插件最近一次运行报告：`C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json`。
+- 成功时报告里会包含 `"success": true`，并在 `outputs` 数组中列出生成的 GIF。
+
+注意：
+
+- GIF 生成仍然依赖 FFmpeg。打包版本可以使用随包的 `tools\ffmpeg\bin`。
+- 7-Zip 只影响压缩归档；即使缺少 `7z.exe`，GIF 本身仍可能已经生成成功。
+- PotPlayer PlayParse 插件是媒体解析时触发的扩展，不是工具栏按钮；触发时机是 PotPlayer 加载或解析视频时。
 
 ### 功能详解
 
