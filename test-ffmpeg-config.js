@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   getConfiguredFFmpegBinPath,
@@ -39,6 +41,21 @@ assert.strictEqual(
   getFFmpegToolPath({}, 'ffmpeg', { defaultBinPaths: [configuredBin] }),
   path.join(configuredBin, 'ffmpeg.exe'),
   'resolves ffmpeg.exe from a bundled default bin directory when no path is configured'
+);
+
+const tempAsarBin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'processvideo-ffmpeg-asar-')), 'app.asar', 'tools', 'ffmpeg', 'bin');
+fs.mkdirSync(tempAsarBin, { recursive: true });
+fs.writeFileSync(path.join(tempAsarBin, 'ffmpeg.exe'), '');
+
+assert.strictEqual(
+  getFFmpegToolPath({}, 'ffmpeg', {
+    defaultBinPaths: [
+      tempAsarBin,
+      configuredBin
+    ]
+  }),
+  path.join(configuredBin, 'ffmpeg.exe'),
+  'skips FFmpeg defaults inside app.asar because Windows cannot spawn virtual asar paths'
 );
 
 const env = getFFmpegToolEnvironment({ ffmpegPath: configuredBin }, { PATH: 'C:\\Windows\\System32' });

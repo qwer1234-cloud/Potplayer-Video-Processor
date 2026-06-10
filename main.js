@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const { checkForUpdates } = require('./check-update');
@@ -14,6 +14,20 @@ const {
   mergeFFmpegSettingsForSave,
   quoteCommandPath
 } = require('./ffmpeg-config');
+const pbfParser = require('./core/pbf-parser');
+const {
+  buildAdminInstallCommand,
+  buildAdminInstallPowerShellCommand,
+  detectPotPlayerPath,
+  getTargetDir: getPotPlayerExtensionTargetDir,
+  parseCliArgs: parsePotPlayerInstallArgs,
+  installPotPlayerExtension,
+  writeInstallReport
+} = require('./potplayer-extension/install-extension');
+const {
+  getElectronCompanionArgs,
+  main: runProcessVideoCli
+} = require('./cli/processvideo-cli');
 
 // Import bookmark processors
 const BookmarkProcessor = require('./scripts/bookmark_processor');
@@ -30,6 +44,7 @@ global.RobustBookmarkProcessor = RobustBookmarkProcessor;
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
 const windowStatePath = path.join(userDataPath, 'window-state.json');
+const pluginRunReportPath = path.join(userDataPath, 'runtime', 'last-run.json');
 const DEFAULT_SELECTION_PATHS = {
   default: 'D:\\',
   gif: 'D:\\',
@@ -119,16 +134,60 @@ function rememberSelectionPath(format, filePaths) {
 }
 
 function getBundledFFmpegBinPaths() {
-  const pathsToCheck = [
-    path.join(__dirname, 'tools', 'ffmpeg', 'bin')
-  ];
+  const pathsToCheck = [];
 
   if (process.resourcesPath) {
     pathsToCheck.push(path.join(process.resourcesPath, 'tools', 'ffmpeg', 'bin'));
     pathsToCheck.push(path.join(process.resourcesPath, 'app', 'tools', 'ffmpeg', 'bin'));
   }
 
+  pathsToCheck.push(path.join(__dirname, 'tools', 'ffmpeg', 'bin'));
+
   return pathsToCheck;
+}
+
+function getPackagedCompanionPath() {
+  return app.isPackaged ? process.execPath : path.join(__dirname, 'cli', 'processvideo-cli.js');
+}
+
+function getPackagedCompanionNodePath() {
+  return app.isPackaged ? '' : 'node';
+}
+
+function runPotPlayerExtensionInstall(argv) {
+  const flagIndex = argv.indexOf('--install-potplayer-extension');
+  if (flagIndex < 0) {
+    return null;
+  }
+
+  const options = parsePotPlayerInstallArgs(argv.slice(flagIndex + 1));
+  if (!options.companionPath) {
+    options.companionPath = getPackagedCompanionPath();
+  }
+  if (options.nodePath === undefined) {
+    options.nodePath = getPackagedCompanionNodePath();
+  }
+  if (!options.reportPath) {
+    options.reportPath = pluginRunReportPath;
+  }
+
+  const result = installPotPlayerExtension(options);
+  writeInstallReport(options.reportPath, result);
+  return result;
+}
+
+function getPotPlayerInstallReportPath(argv) {
+  const flagIndex = argv.indexOf('--install-potplayer-extension');
+  if (flagIndex < 0) {
+    return '';
+  }
+
+  try {
+    const options = parsePotPlayerInstallArgs(argv.slice(flagIndex + 1));
+    return options.reportPath || pluginRunReportPath;
+  } catch (_) {
+    return pluginRunReportPath;
+  }
 }
 
 function saveWindowState(windowState) {
@@ -442,6 +501,31 @@ function debounce(func, wait) {
 }
 
 app.whenReady().then(() => {
+  try {
+    const installResult = runPotPlayerExtensionInstall(process.argv);
+    if (installResult) {
+      console.log(`Installed ProcessVideo PotPlayer extension to: ${installResult.targetDir}`);
+      app.exit(0);
+      return;
+    }
+  } catch (error) {
+    writeInstallReport(getPotPlayerInstallReportPath(process.argv), {
+      success: false,
+      error: error.message
+    });
+    console.error(error.message);
+    app.exit(1);
+    return;
+  }
+
+  const companionArgs = getElectronCompanionArgs(process.argv);
+  if (companionArgs) {
+    runProcessVideoCli(companionArgs).then(code => {
+      app.exit(code);
+    });
+    return;
+  }
+
   createWindow();
   // Check for updates after a short delay
   setTimeout(() => {
@@ -562,6 +646,112 @@ ipcMain.handle('load-settings', async () => {
   return loadSettings();
 });
 
+ipcMain.handle('install-potplayer-extension', async () => {
+  const potplayerPath = detectPotPlayerPath();
+  if (!potplayerPath) {
+    return {
+      success: false,
+      error: 'PotPlayer installation path was not found'
+    };
+  }
+
+  try {
+    const result = installPotPlayerExtension({
+      potplayerPath,
+      companionPath: getPackagedCompanionPath(),
+      nodePath: getPackagedCompanionNodePath(),
+      reportPath: pluginRunReportPath
+    });
+
+    return {
+      success: true,
+      ...result
+    };
+  } catch (error) {
+    return {
+      success: false,
+      potplayerPath,
+      targetDir: getPotPlayerExtensionTargetDir(potplayerPath),
+      error: error.message,
+      requiresElevation: error.code === 'EPERM' || /EPERM|permission|access/i.test(error.message),
+      adminCommand: buildAdminInstallCommand({
+        exePath: process.execPath,
+        potplayerPath,
+        companionPath: getPackagedCompanionPath(),
+        nodePath: getPackagedCompanionNodePath(),
+        reportPath: pluginRunReportPath
+      })
+    };
+  }
+});
+
+ipcMain.handle('install-potplayer-extension-elevated', async () => {
+  const potplayerPath = detectPotPlayerPath();
+  if (!potplayerPath) {
+    return {
+      success: false,
+      error: 'PotPlayer installation path was not found'
+    };
+  }
+
+  const installOptions = {
+    exePath: process.execPath,
+    potplayerPath,
+    companionPath: getPackagedCompanionPath(),
+    nodePath: getPackagedCompanionNodePath(),
+    reportPath: pluginRunReportPath
+  };
+  const command = buildAdminInstallPowerShellCommand(installOptions);
+
+  try {
+    const child = require('child_process').spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+
+    return {
+      success: true,
+      potplayerPath,
+      targetDir: getPotPlayerExtensionTargetDir(potplayerPath),
+      adminCommand: command
+    };
+  } catch (error) {
+    return {
+      success: false,
+      potplayerPath,
+      targetDir: getPotPlayerExtensionTargetDir(potplayerPath),
+      error: error.message,
+      adminCommand: command
+    };
+  }
+});
+
+ipcMain.handle('open-potplayer-extension-folder', async () => {
+  const potplayerPath = detectPotPlayerPath();
+  if (!potplayerPath) {
+    return { success: false, error: 'PotPlayer installation path was not found' };
+  }
+
+  const targetDir = getPotPlayerExtensionTargetDir(potplayerPath);
+  await shell.openPath(targetDir);
+  return { success: true, targetDir };
+});
+
+ipcMain.handle('load-last-plugin-run', async () => {
+  try {
+    if (!fs.existsSync(pluginRunReportPath)) {
+      return { success: true, report: null, reportPath: pluginRunReportPath };
+    }
+
+    const report = JSON.parse(fs.readFileSync(pluginRunReportPath, 'utf8'));
+    return { success: true, report, reportPath: pluginRunReportPath };
+  } catch (error) {
+    return { success: false, error: error.message, reportPath: pluginRunReportPath };
+  }
+});
+
 // Parse PBF file and extract bookmarks
 ipcMain.handle('parse-pbf-bookmarks', async (event, pbfFilePath) => {
   try {
@@ -597,46 +787,10 @@ ipcMain.handle('extract-subtitle', async (event, videoPath, streamIndex, languag
 
 // PBF file parsing function
 async function parsePBFBookmarks(pbfFilePath) {
-  return new Promise((resolve, reject) => {
-    const fs = require('fs');
-    const path = require('path');
-
-    logWithTimestamp(`Parsing PBF file: ${pbfFilePath}`);
-
-    // Check if file exists
-    if (!fs.existsSync(pbfFilePath)) {
-      reject(new Error(`PBF file not found: ${pbfFilePath}`));
-      return;
-    }
-
-    try {
-      // Read PBF file content - try UTF-16LE first (PotPlayer format)
-      let content;
-      try {
-        const buffer = fs.readFileSync(pbfFilePath);
-        content = buffer.toString('utf16le');
-        logWithTimestamp(`Reading PBF file with UTF-16LE encoding`);
-      } catch (utf16Error) {
-        // Fallback to UTF-8
-        content = fs.readFileSync(pbfFilePath, 'utf8');
-        logWithTimestamp(`Reading PBF file with UTF-8 encoding (fallback)`);
-      }
-
-      // Parse bookmarks based on common PBF/PotPlayer bookmark formats
-      const bookmarks = parseBookmarkContent(content);
-
-      if (bookmarks.length === 0) {
-        reject(new Error('No bookmarks found in PBF file'));
-        return;
-      }
-
-      logWithTimestamp(`Found ${bookmarks.length} bookmarks in PBF file`);
-      resolve(bookmarks);
-
-    } catch (error) {
-      reject(new Error(`Failed to read PBF file: ${error.message}`));
-    }
-  });
+  logWithTimestamp(`Parsing PBF file: ${pbfFilePath}`);
+  const bookmarks = await pbfParser.parsePBFBookmarks(pbfFilePath);
+  logWithTimestamp(`Found ${bookmarks.length} bookmarks in PBF file`);
+  return bookmarks;
 }
 
 // Parse bookmark content from PBF file

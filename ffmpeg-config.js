@@ -26,7 +26,15 @@ function getCandidateBinPaths(settings = {}, options = {}) {
   return [
     getConfiguredFFmpegBinPath(settings),
     ...(options.defaultBinPaths || [])
-  ].filter(Boolean);
+  ].filter(isUsableBinPath);
+}
+
+function isUsableBinPath(binPath) {
+  if (!binPath) {
+    return false;
+  }
+
+  return !String(binPath).toLowerCase().includes('.asar');
 }
 
 function getFFmpegToolPath(settings = {}, toolName, options = {}) {
@@ -94,6 +102,7 @@ function mergeFFmpegSettingsForSave(existingSettings = {}, incomingSettings = {}
 
 module.exports = {
   getConfiguredFFmpegBinPath,
+  isUsableBinPath,
   getFFmpegToolPath,
   getFFmpegToolEnvironment,
   mergeFFmpegSettingsForSave,

@@ -16,6 +16,7 @@ logs/
 app.log
 
 # Runtime data
+runtime/
 pids/
 *.pid
 *.seed

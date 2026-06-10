@@ -6,6 +6,11 @@ const statusDiv = document.getElementById('status');
 const formatSelect = document.getElementById('format');
 const ffmpegPathInput = document.getElementById('ffmpegPath');
 const browseFFmpegBtn = document.getElementById('browseFFmpegBtn');
+const installPluginBtn = document.getElementById('installPluginBtn');
+const installPluginAdminBtn = document.getElementById('installPluginAdminBtn');
+const openPluginFolderBtn = document.getElementById('openPluginFolderBtn');
+const refreshPluginRunBtn = document.getElementById('refreshPluginRunBtn');
+const pluginRunSummary = document.getElementById('pluginRunSummary');
 
 // Bookmark elements
 const bookmarkInfo = document.getElementById('bookmarkInfo');
@@ -49,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupEventListeners();
         setupPotPlayerListener();
         await loadSavedSettings();
+        await loadPluginRunSummary();
         console.log('Renderer process initialized successfully');
     } catch (error) {
         console.error('Renderer process initialization failed:', error);
@@ -101,6 +107,10 @@ function setupEventListeners() {
     // File browse button
     browseBtn.addEventListener('click', handleFileBrowse);
     browseFFmpegBtn.addEventListener('click', handleFFmpegBrowse);
+    installPluginBtn.addEventListener('click', handleInstallPlugin);
+    installPluginAdminBtn.addEventListener('click', handleInstallPluginElevated);
+    openPluginFolderBtn.addEventListener('click', handleOpenPluginFolder);
+    refreshPluginRunBtn.addEventListener('click', loadPluginRunSummary);
 
     // Process button
     processBtn.addEventListener('click', handleProcess);
@@ -204,6 +214,70 @@ async function handleFFmpegBrowse() {
         }
     } catch (error) {
         showStatus(`FFmpeg path selection failed: ${error.message}`, 'error');
+    }
+}
+
+async function handleInstallPlugin() {
+    try {
+        const result = await window.electronAPI.installPotPlayerExtension();
+        if (result.success) {
+            showStatus(`PotPlayer plugin installed: ${result.targetDir}`, 'success');
+            await loadPluginRunSummary();
+        } else if (result.requiresElevation && result.adminCommand) {
+            showStatus(`PotPlayer plugin install needs administrator permission. Run: ${result.adminCommand}`, 'error');
+        } else {
+            showStatus(`PotPlayer plugin install failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus(`PotPlayer plugin install failed: ${error.message}`, 'error');
+    }
+}
+
+async function handleInstallPluginElevated() {
+    try {
+        const result = await window.electronAPI.installPotPlayerExtensionElevated();
+        if (result.success) {
+            showStatus(`Administrator install requested: ${result.targetDir}`, 'success');
+        } else {
+            showStatus(`Administrator install request failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus(`Administrator install request failed: ${error.message}`, 'error');
+    }
+}
+
+async function handleOpenPluginFolder() {
+    try {
+        const result = await window.electronAPI.openPotPlayerExtensionFolder();
+        if (!result.success) {
+            showStatus(`Open plugin folder failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showStatus(`Open plugin folder failed: ${error.message}`, 'error');
+    }
+}
+
+async function loadPluginRunSummary() {
+    if (!pluginRunSummary) return;
+
+    try {
+        const result = await window.electronAPI.loadLastPluginRun();
+        if (!result.success) {
+            pluginRunSummary.textContent = `Failed to load plugin run: ${result.error}`;
+            return;
+        }
+
+        if (!result.report) {
+            pluginRunSummary.textContent = `No plugin run found. Report: ${result.reportPath}`;
+            return;
+        }
+
+        const report = result.report;
+        const status = report.success ? 'Success' : 'Failed';
+        const outputCount = Array.isArray(report.outputs) ? report.outputs.length : 0;
+        pluginRunSummary.textContent = `${status} | ${outputCount} output(s) | ${report.videoPath || 'No video'} | ${report.finishedAt || report.startedAt || ''}`;
+    } catch (error) {
+        pluginRunSummary.textContent = `Failed to load plugin run: ${error.message}`;
     }
 }
 
@@ -1010,10 +1084,11 @@ function showDetailedResults(results, compression = null) {
         console.log(`总大小: ${compression.totalSizeMB || 'N/A'} MB`);
 
         compression.fileMove.movedFiles.forEach(file => {
+            const fileName = file.targetPath.split(/[\\\/]/).pop(); // Simple basename extraction
             if (file.type === 'volume') {
-                console.log(`📁 ${file.volumeNumber}/: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+                console.log(`📁 ${file.volumeNumber}/: ${fileName} (${Math.round(file.size / 1024 / 1024)}MB)`);
             } else {
-                console.log(`📁 picture\\: ${path.basename(file.targetPath)} (${Math.round(file.size / 1024 / 1024)}MB)`);
+                console.log(`📁 picture\\: ${fileName} (${Math.round(file.size / 1024 / 1024)}MB)`);
             }
         });
 

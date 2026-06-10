@@ -13,5 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeProcessingProgressListener: () => ipcRenderer.removeAllListeners('processing-progress'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   loadSettings: () => ipcRenderer.invoke('load-settings'),
+  installPotPlayerExtension: () => ipcRenderer.invoke('install-potplayer-extension'),
+  installPotPlayerExtensionElevated: () => ipcRenderer.invoke('install-potplayer-extension-elevated'),
+  openPotPlayerExtensionFolder: () => ipcRenderer.invoke('open-potplayer-extension-folder'),
+  loadLastPluginRun: () => ipcRenderer.invoke('load-last-plugin-run'),
   onPotPlayerTimeUpdate: (callback) => ipcRenderer.on('potplayer-time-update', callback)
 });

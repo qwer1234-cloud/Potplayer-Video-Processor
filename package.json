@@ -3,11 +3,15 @@
   "version": "5.13.1",
   "description": "视频片段提取和GIF制作工具 (Beta版本)",
   "main": "main.js",
+  "bin": {
+    "processvideo-cli": "cli/processvideo-cli.js"
+  },
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
     "package": "electron-packager . \"Video Processing Tool Beta\" --platform=win32 --arch=x64 --out=dist --overwrite",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "install-potplayer-extension": "node potplayer-extension/install-extension.js"
   },
   "keywords": [
     "video",

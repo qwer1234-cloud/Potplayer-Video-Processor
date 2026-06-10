@@ -78,6 +78,32 @@ h1 {
     background: #5a6fd8;
 }
 
+.secondary-btn {
+    background: #6c757d;
+}
+
+.secondary-btn:hover {
+    background: #5c636a;
+}
+
+.plugin-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.plugin-run-summary {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    background: #f8f9fa;
+    color: #555;
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-all;
+}
+
 /* 单选按钮组 */
 .radio-group {
     display: flex;
