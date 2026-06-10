@@ -26,11 +26,11 @@ const result = installPotPlayerExtension({
 assert.strictEqual(result.targetDir, targetDir);
 assert.ok(fs.existsSync(path.join(targetDir, 'MediaPlayParse - ProcessVideo.as')));
 assert.ok(fs.existsSync(path.join(targetDir, 'ProcessVideo_default.ini')));
-assert.strictEqual(
-  fs.readFileSync(userIniPath, 'utf8'),
-  '[PROCESSVIDEO]\ncompanion_path=C:\\Custom\\Companion.exe\n',
-  'does not overwrite an existing user ProcessVideo.ini'
-);
+const preservedIni = fs.readFileSync(userIniPath, 'utf8');
+assert.match(preservedIni, /companion_path=C:\\Custom\\Companion\.exe/, 'preserves an existing user companion_path');
+assert.match(preservedIni, /async_launch=1/, 'adds new default async launch setting to existing user config');
+assert.strictEqual(result.wroteUserIni, false);
+assert.strictEqual(result.updatedUserIni, true);
 
 fs.rmSync(userIniPath, { force: true });
 const secondResult = installPotPlayerExtension({
@@ -43,6 +43,7 @@ const generatedIni = fs.readFileSync(secondResult.userIniPath, 'utf8');
 assert.match(generatedIni, /companion_path=D:\\ProcessVideo-Beta\\cli\\processvideo-cli\.js/);
 assert.match(generatedIni, /node_path=node/);
 assert.match(generatedIni, /report_path=D:\\ProcessVideo-Beta\\runtime\\last-run\.json/);
+assert.match(generatedIni, /async_launch=1/);
 
 const exeIni = require('./potplayer-extension/install-extension').renderUserIni({
   companionPath: 'D:\\ProcessVideo-Beta\\dist\\Video Processing Tool Beta 5.13.1.exe',

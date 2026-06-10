@@ -38,13 +38,18 @@ function parseArgs(argv) {
     videoPath: '',
     pbfPath: '',
     reportPath: '',
-    openUI: false
+    openUI: false,
+    force: false
   };
 
   for (let i = 0; i < args.length; i += 1) {
     const option = args[i];
     if (option === '--open-ui') {
       parsed.openUI = true;
+      continue;
+    }
+    if (option === '--force' || option === '--no-cache') {
+      parsed.force = true;
       continue;
     }
 
@@ -97,6 +102,58 @@ function getDefaultFFmpegBinPaths() {
 function writeReport(reportPath, report) {
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+}
+
+function getFileFingerprint(filePath) {
+  const stat = fs.statSync(filePath);
+  return {
+    path: filePath,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs
+  };
+}
+
+function sameFingerprint(a, b) {
+  return Boolean(a && b)
+    && a.path === b.path
+    && a.size === b.size
+    && a.mtimeMs === b.mtimeMs;
+}
+
+function readPreviousReport(reportPath) {
+  try {
+    if (!reportPath || !fs.existsSync(reportPath)) {
+      return null;
+    }
+    return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function hasExistingOutputs(report) {
+  return Array.isArray(report && report.outputs)
+    && report.outputs.length > 0
+    && report.outputs.every(outputPath => fs.existsSync(outputPath));
+}
+
+function canSkipUnchangedRun(reportPath, videoFingerprint, pbfFingerprint) {
+  const previous = readPreviousReport(reportPath);
+  if (!previous || previous.success !== true) {
+    return null;
+  }
+
+  if (!sameFingerprint(previous.videoFingerprint, videoFingerprint)) {
+    return null;
+  }
+  if (!sameFingerprint(previous.pbfFingerprint, pbfFingerprint)) {
+    return null;
+  }
+  if (!hasExistingOutputs(previous)) {
+    return null;
+  }
+
+  return previous;
 }
 
 function launchElectronUI() {
@@ -159,9 +216,25 @@ async function runBookmarkGif(parsed) {
     const { pbfPath, videoPath } = await resolveInputPaths(parsed);
     baseReport.videoPath = videoPath;
     baseReport.pbfPath = pbfPath;
+    baseReport.videoFingerprint = getFileFingerprint(videoPath);
+    baseReport.pbfFingerprint = getFileFingerprint(pbfPath);
 
     if (parsed.openUI) {
       launchElectronUI();
+    }
+
+    if (!parsed.force) {
+      const previous = canSkipUnchangedRun(reportPath, baseReport.videoFingerprint, baseReport.pbfFingerprint);
+      if (previous) {
+        baseReport.success = true;
+        baseReport.skipped = true;
+        baseReport.message = 'Skipped because video, PBF, and previous outputs are unchanged';
+        baseReport.outputs = previous.outputs;
+        baseReport.results = previous.results || [];
+        baseReport.finishedAt = new Date().toISOString();
+        writeReport(reportPath, baseReport);
+        return { reportPath, report: baseReport };
+      }
     }
 
     const bookmarks = await parsePBFBookmarks(pbfPath);
@@ -175,6 +248,7 @@ async function runBookmarkGif(parsed) {
     baseReport.message = result && result.message ? result.message : '';
     baseReport.outputs = resultItems.filter(item => item.success && item.outputPath).map(item => item.outputPath);
     baseReport.results = resultItems;
+    baseReport.compression = result && result.compression ? result.compression : null;
     baseReport.finishedAt = new Date().toISOString();
     writeReport(reportPath, baseReport);
 

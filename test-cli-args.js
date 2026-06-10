@@ -16,7 +16,8 @@ const parsed = parseArgs([
   'D:\\media\\episode.pbf',
   '--report',
   'D:\\reports\\last-run.json',
-  '--open-ui'
+  '--open-ui',
+  '--force'
 ]);
 
 assert.deepStrictEqual(parsed, {
@@ -24,7 +25,8 @@ assert.deepStrictEqual(parsed, {
   videoPath: 'D:\\media\\episode.mp4',
   pbfPath: 'D:\\media\\episode.pbf',
   reportPath: 'D:\\reports\\last-run.json',
-  openUI: true
+  openUI: true,
+  force: true
 });
 
 assert.strictEqual(

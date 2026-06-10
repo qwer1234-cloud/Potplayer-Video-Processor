@@ -38,6 +38,7 @@ report_path=D:\ProcessVideo-Beta\runtime\last-run.json
 show_launch_message=1
 cooldown_seconds=30
 require_pbf_exists=1
+async_launch=1
 ```
 
 When PotPlayer parses a local video file, the extension launches:
@@ -50,6 +51,7 @@ The companion reads the `.pbf`, generates GIFs, and writes `runtime/last-run.jso
 
 `cooldown_seconds` prevents repeated PlayParse calls for the same video from launching multiple companion processes.
 `require_pbf_exists=1` keeps the extension quiet unless a same-directory, same-name `.pbf` exists.
+`async_launch=1` launches the companion in the background so PotPlayer media parsing is not blocked by GIF generation.
 
 ## Packaged Configuration
 

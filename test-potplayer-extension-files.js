@@ -21,6 +21,9 @@ assert.match(script, /HostSaveInteger/, 'extension writes the last launch time t
 assert.match(script, /require_pbf_exists/, 'extension can require a matching PBF before launching');
 assert.match(script, /InferPBFPath/, 'extension infers same-directory same-name PBF paths');
 assert.match(script, /HostFileExist\(pbfPath\)/, 'extension checks that the inferred PBF exists');
+assert.match(script, /async_launch/, 'extension can launch the companion without blocking PotPlayer parsing');
+assert.match(script, /BuildAsyncLaunchParam/, 'extension builds a fire-and-forget launch command');
+assert.match(script, /cmd\.exe/, 'extension uses cmd start for asynchronous companion launch');
 assert.match(script, /GetTitle\(\)/, 'extension exposes a PotPlayer title');
 
 const ini = fs.readFileSync(iniPath, 'utf8');
@@ -30,5 +33,6 @@ assert.match(ini, /node_path=/);
 assert.match(ini, /mode=bookmark-gif/);
 assert.match(ini, /cooldown_seconds=30/);
 assert.match(ini, /require_pbf_exists=1/);
+assert.match(ini, /async_launch=1/);
 
 console.log('PotPlayer extension file tests passed');

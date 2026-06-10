@@ -32,6 +32,7 @@ function renderUserIni(options) {
     'show_launch_message=1',
     'cooldown_seconds=30',
     'require_pbf_exists=1',
+    'async_launch=1',
     ''
   ].join('\n');
 }
@@ -95,9 +96,16 @@ function installPotPlayerExtension(options = {}) {
 
   const userIniPath = path.join(targetDir, 'ProcessVideo.ini');
   let wroteUserIni = false;
+  let updatedUserIni = false;
   if (!fs.existsSync(userIniPath)) {
     fs.writeFileSync(userIniPath, renderUserIni(options));
     wroteUserIni = true;
+  } else {
+    const userIni = fs.readFileSync(userIniPath, 'utf8');
+    if (!/^\s*async_launch\s*=/im.test(userIni)) {
+      fs.writeFileSync(userIniPath, `${userIni.replace(/\s*$/, '')}\nasync_launch=1\n`, 'utf8');
+      updatedUserIni = true;
+    }
   }
 
   return {
@@ -107,7 +115,8 @@ function installPotPlayerExtension(options = {}) {
     scriptPath: path.join(targetDir, scriptName),
     defaultIniPath: path.join(targetDir, defaultIniName),
     userIniPath,
-    wroteUserIni
+    wroteUserIni,
+    updatedUserIni
   };
 }
 

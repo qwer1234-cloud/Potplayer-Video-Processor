@@ -131,6 +131,11 @@ bool ShouldThrottleLaunch(const string &in videoPath)
   return false;
 }
 
+string BuildAsyncLaunchParam(const string &in exeName, const string &in exeParam)
+{
+  return "/d /s /c start \"\" /b " + QuoteArg(exeName) + " " + exeParam;
+}
+
 void LaunchProcessVideo(const string &in videoPath)
 {
   string mode = ReadConfigString("mode", "bookmark-gif");
@@ -139,6 +144,7 @@ void LaunchProcessVideo(const string &in videoPath)
   string reportPath = ReadConfigString("report_path", "");
   int openUi = ReadConfigInt("open_ui_after_start", 0);
   int showMessage = ReadConfigInt("show_launch_message", 1);
+  int asyncLaunch = ReadConfigInt("async_launch", 1);
 
   if (companionPath.empty())
   {
@@ -178,12 +184,20 @@ void LaunchProcessVideo(const string &in videoPath)
   }
 
   HostPrintUTF8("ProcessVideo launch: " + exeName + " " + exeParam);
-  string result = HostExecuteProgram(exeName, exeParam);
+  string result = "";
+  if (asyncLaunch != 0)
+  {
+    result = HostExecuteProgram("cmd.exe", BuildAsyncLaunchParam(exeName, exeParam));
+  }
+  else
+  {
+    result = HostExecuteProgram(exeName, exeParam);
+  }
   HostPrintUTF8("ProcessVideo result: " + result);
 
   if (showMessage != 0)
   {
-    HostMessageBox("ProcessVideo companion launched. Check the configured report or output folder.", "ProcessVideo", 2, 0);
+    HostMessageBox("ProcessVideo companion queued. Check the configured report or output folder.", "ProcessVideo", 2, 0);
   }
 }
 

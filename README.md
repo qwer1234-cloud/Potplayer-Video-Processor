@@ -125,6 +125,7 @@ timeout_seconds=10
 show_launch_message=1
 cooldown_seconds=30
 require_pbf_exists=1
+async_launch=1
 ```
 
 Key fields:
@@ -134,12 +135,14 @@ Key fields:
 - `report_path`: JSON report written after each plugin run.
 - `cooldown_seconds`: prevents repeated PotPlayer parse events from starting duplicate jobs.
 - `require_pbf_exists=1`: only runs when a matching `.pbf` exists next to the video.
+- `async_launch=1`: starts the companion in the background so PotPlayer does not wait for GIF generation during media parsing.
 
 #### Output and Verification
 
 - GIF output follows the normal bookmark GIF rule: `D:\{PBF_Filename}\`.
 - Last plugin report: `C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json`.
 - A successful report contains `"success": true` and an `outputs` array with generated GIF paths.
+- If the same video and `.pbf` are opened again and the previous GIF outputs still exist, the CLI skips regeneration and writes a skipped report.
 
 Notes:
 
@@ -441,6 +444,7 @@ timeout_seconds=10
 show_launch_message=1
 cooldown_seconds=30
 require_pbf_exists=1
+async_launch=1
 ```
 
 关键配置：
@@ -450,12 +454,14 @@ require_pbf_exists=1
 - `report_path`：每次插件运行后的 JSON 报告路径。
 - `cooldown_seconds`：避免 PotPlayer 重复解析同一个视频时多次启动任务。
 - `require_pbf_exists=1`：只有视频旁边存在同名 `.pbf` 时才触发。
+- `async_launch=1`：后台启动 companion，避免 PotPlayer 媒体解析等待 GIF 生成完成。
 
 #### 输出与验证
 
 - GIF 输出遵循书签 GIF 规则：`D:\{PBF文件名}\`。
 - 插件最近一次运行报告：`C:\Users\sunhao\AppData\Roaming\video-processor-beta\runtime\last-run.json`。
 - 成功时报告里会包含 `"success": true`，并在 `outputs` 数组中列出生成的 GIF。
+- 如果再次打开同一个视频，且视频、`.pbf` 和上次 GIF 输出都未变化，CLI 会跳过重复生成并写入 skipped 报告。
 
 注意：
 
